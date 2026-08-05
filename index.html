@@ -230,6 +230,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div class="topbar">
   <div class="brand"><b>현장조사 동선 정리</b><span id="topbarSub">FIELD ROUTE</span></div>
   <div class="topbar-right">
+    <span id="quotaBadge" style="font-size:11px;background:rgba(255,255,255,0.12);padding:4px 9px;border-radius:100px;font-family:var(--mono);"></span>
     <button class="gearbtn" onclick="App.openSettings()" title="설정">⚙</button>
     <div class="step" id="stepBadge">업로드</div>
   </div>
@@ -245,8 +246,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <p>소재지(주소) 컬럼이 있는 엑셀이라면 무엇이든 올려보세요.<br>주소를 마을 단위로 자동 정리하고 방문 순서까지 계산해드려요.</p>
       <label class="filebtn">파일 선택<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;"></label>
     </div>
-    <div class="privacy-note">이 파일 자체는 서버로 전송되지 않고 이 브라우저 안에서만 처리됩니다. 탭을 닫으면 데이터도 함께 사라져요. 좌표 자동계산 기능을 쓸 때만 주소 관련 문자열이 행정안전부 주소 API로 전송돼요 — 소유자명 등 다른 정보는 전송되지 않습니다. (마을 단위 계산은 "시군구+마을명"만, 필지 단위 계산은 필지의 소재지 주소 전체가 전송돼요)</div>
-
     <div class="card" id="manualAddCard">
       <h3 style="font-size:15px;margin-bottom:4px;">필지 직접 추가</h3>
       <p class="hint" style="margin-top:0;">몇 개 필지만 조사할 때는 엑셀 없이 여기서 바로 추가해서 시작할 수 있어요.</p>
@@ -312,23 +311,23 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <button class="gps-btn" id="geocodeBtn" onclick="App.geocodeVillages()">🌐 마을 좌표 자동계산</button>
       <button class="gps-btn" id="codeSortBtn" onclick="App.sortByLegalCode()">🔢 법정동코드순 정렬</button>
     </div>
-    <div class="geo-status" id="geoStatus">마을당 1회만 조회해요 (필지별 조회 아님) · 카카오 지도 API(무료) 사용, 별도 키 입력 필요 없음</div>
-    <div class="geo-status" id="kakaoQuotaStatus"></div>
+    <div class="geo-status" id="geoStatus">마을 좌표 계산</div>
 
     <div class="card" id="parcelGeoCard" style="margin-top:2px;">
       <h3 style="font-size:14.5px;margin-bottom:2px;">필지 단위 동선 계산</h3>
-      <p class="hint" style="margin-top:2px;">카카오 지도 API(무료) 사용. 필지 하나하나의 정확한 좌표가 필요해서 마을 단위보다 API 호출이 훨씬 많아요. 카카오는 <b>이 앱 전체가 하루 10만 건을 나눠 쓰는 공동 쿼터</b>라 조사원이 많은 날엔 소진될 수 있어요 — 소진되면 자정(한국시간) 이후 다시 시도해주세요.</p>
+      <p class="hint" style="margin-top:2px;">필지 단위는 마을 단위보다 호출이 훨씬 많아요.</p>
       <div class="gps-row">
         <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">🧭 필지 좌표 자동계산</button>
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
       </div>
-      <div class="geo-status" id="parcelGeoStatus">이 버튼을 누르면 필지의 소재지 주소가 카카오 API로 전송돼요 (다른 항목은 전송 안 함)</div>
+      <div class="geo-status" id="parcelGeoStatus">필지 좌표 계산</div>
 
       <label class="fieldlabel" style="margin-top:10px;">출발지 (선택 — 없으면 임의의 필지에서 시작)</label>
       <div class="searchbar">
-        <input type="text" id="startAddrInput" placeholder="예: 전북특별자치도 군산시 OO읍 OO리 123">
-        <button onclick="App.searchStartAddress()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
+        <input type="text" id="startAddrInput" placeholder="예: 군산시 대야면, 또는 OO읍 OO리 123">
+        <button onclick="App.searchStartCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
       </div>
+      <div id="startCandidates"></div>
       <div class="gps-row">
         <button class="gps-btn" id="startGpsBtn" onclick="App.setStartFromGPS()">📍 현재 위치를 출발지로</button>
         <button class="gps-btn" onclick="App.clearStartPoint()">✕ 출발지 지우기</button>
@@ -352,8 +351,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <h3>설정</h3>
     <p class="hint">여기 입력한 내용은 <b>이 브라우저에만</b> 저장돼요. 서버로 전송되거나 내보내기 파일에 포함되지 않습니다.</p>
 
-    <label class="fieldlabel">카카오 API 사용량 (이 브라우저 기준)</label>
-    <p class="hint">카카오 지오코딩은 <b>키(앱) 1개당 하루 10만 건을 조사원 전체가 공동으로 나눠 쓰는 쿼터</b>예요. 이 도구는 키를 2개 등록해두면 첫 번째 키 사용량이 안전선(약 97,000건)에 가까워질 때 자동으로 두 번째 키로 넘어가요. 아래 숫자는 <b>이 브라우저에서 오늘 각 키로 호출한 건수</b>일 뿐이라, 다른 조사원의 사용량은 포함되지 않은 참고값이에요. 두 키 모두 소진되면 지오코딩 요청이 실패로 뜨니, 그때는 내일(자정, 한국시간 이후) 다시 시도해주세요.</p>
+    <label class="fieldlabel">카카오 API 사용량</label>
     <div id="kakaoQuotaBox" class="hint" style="font-family:var(--mono);"></div>
 
     <label class="fieldlabel">마을 좌표 참조표</label>
@@ -443,6 +441,81 @@ const GEOCODE_PROVIDER = 'kakao';
 // "JavaScript 키"(REST 키 아님 — REST 키는 브라우저 직접 호출 시 CORS로 막히는 경우가
 // 많아 SDK 경로를 씀) 2개를 아래 배열에 순서대로 넣으면 됨.
 const KAKAO_APP_KEYS = ['3cee8237a39ce9a6fd5e6679220f48ba', 'YOUR_KAKAO_JS_APP_KEY_2'];
+// Firebase Realtime Database — 카카오 API 공유 사용량 카운터 (HANDOFF.md 8-4절, 10번째 세션)
+// Realtime Database > 규칙 탭:
+// {
+//   "rules": {
+//     "kakaoQuotaShared": {
+//       "$keyIdx": {
+//         "$date": {
+//           ".read": true,
+//           ".write": "newData.isNumber() && newData.val() >= 0 && (!data.exists() || newData.val() === data.val() + 1)"
+//         }
+//       }
+//     }
+//   }
+// }
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDNUFDQHnVFxCCEk1iHb17_hQCjG_t6V4E",
+  authDomain: "juso-dec15.firebaseapp.com",
+  databaseURL: "https://juso-dec15-default-rtdb.firebaseio.com",
+  projectId: "juso-dec15",
+  storageBucket: "juso-dec15.firebasestorage.app",
+  messagingSenderId: "140469810518",
+  appId: "1:140469810518:web:6876c90e17f69d687912f7",
+  measurementId: "G-W1VPWQTQE5"
+};
+function isFirebaseConfigured(){
+  return !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.databaseURL && !String(FIREBASE_CONFIG.apiKey).startsWith('YOUR_'));
+}
+let _sharedKakaoQuota = {};
+let _firebaseReadyPromise = null;
+function loadFirebaseSdkScripts(){
+  return new Promise((resolve, reject)=>{
+    const urls = [
+      'https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/12.17.1/firebase-database-compat.js'
+    ];
+    let loaded = 0;
+    urls.forEach(src=>{
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = ()=>{ if(++loaded === urls.length) resolve(); };
+      script.onerror = ()=> reject(new Error('firebase-sdk-load-error'));
+      document.head.appendChild(script);
+    });
+  });
+}
+async function ensureFirebaseReady(){
+  if(!isFirebaseConfigured()) return null;
+  if(!_firebaseReadyPromise){
+    _firebaseReadyPromise = loadFirebaseSdkScripts().then(()=>{
+      if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      return firebase.database();
+    });
+  }
+  return _firebaseReadyPromise;
+}
+function bumpSharedKakaoQuota(idx){
+  if(!isFirebaseConfigured()) return;
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    db.ref(`kakaoQuotaShared/${idx}/${todayKeyKST()}`).transaction(current=>(current||0)+1).catch(()=>{});
+  }).catch(()=>{});
+}
+function subscribeSharedKakaoQuota(){
+  if(!isFirebaseConfigured()) return;
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    KAKAO_APP_KEYS.forEach((key,i)=>{
+      if(!isKakaoKeyConfigured(key)) return;
+      db.ref(`kakaoQuotaShared/${i}/${todayKeyKST()}`).on('value', snap=>{
+        _sharedKakaoQuota[i] = snap.val() || 0;
+        App.renderKakaoQuota();
+      });
+    });
+  }).catch(()=>{});
+}
 // 카카오 로컬 API 무료 쿼터: 앱(=키 1개) 전체 합산 기준 일 100,000건.
 // 조사원 개인별이 아니라 그 키를 쓰는 모든 조사원이 나눠 쓰는 공동 풀이라는 점 주의.
 const KAKAO_DAILY_LIMIT = 100000;
@@ -517,6 +590,28 @@ function geocoderKakaoRaw(addrText){
         resolve({ok:true, lat:parseFloat(result[0].y), lng:parseFloat(result[0].x)});
       } else if(status === kakao.maps.services.Status.ZERO_RESULT){
         resolve({error:'no-match'});
+      } else {
+        resolve({error:'kakao-error', status});
+      }
+    });
+  });
+}
+
+function placesKeywordSearchRaw(query){
+  return new Promise((resolve, reject)=>{
+    if(typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services){
+      reject(new Error('kakao-sdk-not-loaded')); return;
+    }
+    const places = new kakao.maps.services.Places();
+    places.keywordSearch(query, (result, status)=>{
+      if(status === kakao.maps.services.Status.OK){
+        resolve({ok:true, list: result.map(r=>({
+          name: r.place_name || r.address_name,
+          addr: r.road_address_name || r.address_name,
+          lat: parseFloat(r.y), lng: parseFloat(r.x)
+        }))});
+      } else if(status === kakao.maps.services.Status.ZERO_RESULT){
+        resolve({ok:true, list:[]});
       } else {
         resolve({error:'kakao-error', status});
       }
@@ -646,6 +741,7 @@ const App = {
                               // juso.go.kr's parcel-level API is free with no usage cap, so there's
                               // no cost to re-fetching after a fresh page load.
   startPoint: null,          // {lat,lng,label,source} for 출발지 기준 순서 계산
+  _startCandidates: [],
   routeMode: 'village',      // 'village' (grouped, existing) | 'flat' (single ordered parcel list)
   flatOrder: [],             // parcel id order, used when routeMode==='flat'
   _geoCancel: false,
@@ -662,6 +758,8 @@ const App = {
     try{ this.villageCoordRef = JSON.parse(localStorage.getItem('frp_village_coord_ref')||'{}'); }catch(e){ this.villageCoordRef = {}; }
     // parcelCoordCache is intentionally NOT loaded from localStorage — see field comment below.
     this.renderManualAddCard();
+    this.renderKakaoQuota();
+    subscribeSharedKakaoQuota();
   },
 
   handleFile(file){
@@ -992,7 +1090,7 @@ const App = {
     const badges = {upload:'업로드', sheetpick:'시트 선택', mapping:'컬럼 확인', select:'마을 선택', route:'동선'};
     document.getElementById('stepBadge').textContent = badges[name];
     document.getElementById('stickyBottom').style.display = (name==='route') ? 'flex' : 'none';
-    if(name==='route' && GEOCODE_PROVIDER==='kakao') this.renderKakaoQuota();
+    if(GEOCODE_PROVIDER==='kakao') this.renderKakaoQuota();
   },
 
   // ---------- SELECT SCREEN ----------
@@ -1405,6 +1503,7 @@ const App = {
         const r = await geocoderKakaoRaw(norm);
         if(r.ok){
           bumpKakaoQuota(idx);
+          bumpSharedKakaoQuota(idx);
           this.renderKakaoQuota();
           this.parcelCoordCache[norm] = {lat:r.lat, lng:r.lng};
           return {ok:true, lat:r.lat, lng:r.lng};
@@ -1420,18 +1519,19 @@ const App = {
     return {error:'all-keys-exhausted'};
   },
   renderKakaoQuota(){
+    const useShared = isFirebaseConfigured();
+    const remain = KAKAO_APP_KEYS.reduce((sum, key, i)=>{
+      if(!isKakaoKeyConfigured(key)) return sum;
+      const used = useShared && _sharedKakaoQuota[i] !== undefined
+        ? _sharedKakaoQuota[i]
+        : loadKakaoQuota(i).count;
+      return sum + Math.max(0, KAKAO_DAILY_LIMIT - used);
+    }, 0);
+    const text = `오늘 남은 조회 ${remain.toLocaleString()}건`;
     const box = document.getElementById('kakaoQuotaBox');
-    const status = document.getElementById('kakaoQuotaStatus');
-    const parts = KAKAO_APP_KEYS.map((key,i)=>{
-      if(!isKakaoKeyConfigured(key)) return null;
-      const q = loadKakaoQuota(i);
-      const remain = Math.max(0, KAKAO_DAILY_LIMIT - q.count);
-      return `키${i+1}${i===_kakaoKeyIndex?' (사용 중)':''}: ${q.count.toLocaleString()}/${KAKAO_DAILY_LIMIT.toLocaleString()} · 남은 추정 ${remain.toLocaleString()}`;
-    }).filter(Boolean);
-    const text = (parts.length ? parts.join('  ·  ') : '카카오 키가 아직 설정되지 않았어요')
-      + ' (자정 KST 초기화, 이 브라우저 기준 추정치라 다른 조사원 사용량은 미포함)';
+    const badge = document.getElementById('quotaBadge');
     if(box) box.textContent = text;
-    if(status) status.textContent = text;
+    if(badge) badge.textContent = text;
   },
 
   // ---------- GEOCODING (village-level, juso.go.kr) ----------
@@ -1559,23 +1659,61 @@ const App = {
   cancelParcelGeocode(){ this._geoCancel = true; },
 
   // ---------- START POINT (출발지 기준 순서 계산) ----------
-  async searchStartAddress(){
+  async searchStartCandidates(){
     const input = document.getElementById('startAddrInput');
     const text = input.value.trim();
-    if(!text){ alert('출발지 주소를 입력해주세요.'); return; }
+    if(!text){ alert('출발지 주소나 지역명을 입력해주세요.'); return; }
     if(!this.hasActiveGeocodeKey()){
-      alert('지오코딩 API 키가 아직 설정되지 않았어요. 관리자에게 문의해주세요.');
+      alert('지오코딩 API 키가 아직 설정되지 않았어요.');
       return;
     }
     const status = document.getElementById('startPointStatus');
     status.textContent = '검색 중...';
-    const r = await this.geocodeAddress(text);
-    if(r.ok){
-      this.startPoint = {lat:r.lat, lng:r.lng, label:text, source:'search'};
-      status.textContent = `출발지: ${text} (${r.lat.toFixed(5)}, ${r.lng.toFixed(5)})`;
-    } else {
-      status.textContent = '출발지를 찾지 못했어요. 주소를 더 구체적으로(예: 시/군/구까지) 입력해보세요.';
+    document.getElementById('startCandidates').innerHTML = '';
+
+    const exact = await this.geocodeAddress(text);
+    let candidates = [];
+    if(exact.ok) candidates.push({name:text, addr:text, lat:exact.lat, lng:exact.lng});
+
+    if(GEOCODE_PROVIDER === 'kakao'){
+      try{
+        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
+        const kw = await placesKeywordSearchRaw(text);
+        if(kw.ok){
+          bumpKakaoQuota(_kakaoKeyIndex);
+          bumpSharedKakaoQuota(_kakaoKeyIndex);
+          this.renderKakaoQuota();
+          kw.list.forEach(item=>{
+            if(!candidates.some(c=>c.lat===item.lat && c.lng===item.lng)) candidates.push(item);
+          });
+        }
+      }catch(e){ /* keyword search optional fallback */ }
     }
+
+    if(candidates.length===0){
+      status.textContent = '결과가 없어요. 다른 표현으로 검색해보세요.';
+      return;
+    }
+    if(candidates.length===1){
+      this.pickStartCandidate(0, candidates);
+      return;
+    }
+    this.renderStartCandidates(candidates);
+    status.textContent = '아래에서 출발지를 선택해주세요.';
+  },
+  renderStartCandidates(list){
+    this._startCandidates = list;
+    document.getElementById('startCandidates').innerHTML = list.slice(0,5).map((c,i)=>`
+      <button class="ghost-btn" style="text-align:left;margin-top:6px;" onclick="App.pickStartCandidate(${i})">
+        ${c.name}${c.addr && c.addr!==c.name ? ' · '+c.addr : ''}
+      </button>`).join('');
+  },
+  pickStartCandidate(i, list){
+    const c = (list || this._startCandidates)[i];
+    if(!c) return;
+    this.startPoint = {lat:c.lat, lng:c.lng, label:c.name, source:'search'};
+    document.getElementById('startPointStatus').textContent = `출발지: ${c.name} (${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`;
+    document.getElementById('startCandidates').innerHTML = '';
   },
   setStartFromGPS(){
     if(!navigator.geolocation){ alert('이 브라우저는 위치 확인을 지원하지 않아요'); return; }
@@ -1588,8 +1726,10 @@ const App = {
   },
   clearStartPoint(){
     this.startPoint = null;
+    this._startCandidates = [];
     document.getElementById('startPointStatus').textContent = '출발지가 설정되지 않았어요';
     document.getElementById('startAddrInput').value = '';
+    document.getElementById('startCandidates').innerHTML = '';
   },
 
   // ---------- FLAT (필지 전체) ORDER ----------
