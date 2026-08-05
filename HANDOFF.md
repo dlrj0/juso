@@ -11,6 +11,26 @@
 
 ## 2. 세션별 변경 이력 (최신 세션이 위로)
 
+### 11번째 세션 — Firebase 실값 적용 + UI 간소화 + 출발지 키워드 검색
+
+**배경**: 사용자가 `요구사항.txt`와 이전 클로드 답변을 기준으로 `index (9).html`에 미반영된 항목을 모두 적용해달라고 요청함. HANDOFF 10번째 세션에서 설계만 되어 있던 Firebase 공유 사용량 카운터가 실제 HTML에는 없었고, 긴 안내 문구·설정 숨김 쿼터 표시·출발지 Geocoder-only 검색도 개선 대상이었음.
+
+### 실제로 바꾼 것
+1. **`FIREBASE_CONFIG`에 사용자 제공 Firebase 프로젝트 값(`juso-dec15`) 채움** — compat SDK 동적 로드(`loadFirebaseSdkScripts`, `ensureFirebaseReady`), `bumpSharedKakaoQuota`, `subscribeSharedKakaoQuota`를 10번째 세션 설계대로 구현. `geocodeAddressKakao()` 성공 시 로컬 카운터와 함께 Firebase `transaction()`으로 공유 카운터도 1 증가.
+2. **상단바 `quotaBadge` 추가** — 모든 화면에서 `오늘 남은 조회 N건` 표시. Firebase가 설정돼 있으면 공유 합산 사용량 기준, 아니면 로컬 브라우저 카운터 기준. route 화면의 `kakaoQuotaStatus` 중복 줄은 제거.
+3. **설정 모달·업로드 화면 긴 설명 삭제/축短** — `privacy-note` div 삭제, 마을/필지 geo-status 문구 단순화, 설정 모달 카카오 쿼터 장문 안내 삭제(숫자 한 줄만).
+4. **`renderKakaoQuota()` 간소화** — `init()`·모든 화면 전환(`goScreen`)·API 호출 후 topbar 배지와 설정 모달을 함께 갱신.
+5. **출발지 검색을 `searchStartCandidates()`로 교체** — Geocoder(지번/도로명) + `Places.keywordSearch`(법정동·부분 지명) 병행. 후보가 여러 개면 선택 UI, 1개면 자동 설정. 키워드 검색 성공 시에도 `bumpKakaoQuota` + `bumpSharedKakaoQuota` 호출(검색 1회당 최대 2건 카운트 — 주소 매칭 1 + 키워드 1).
+
+### 이번 세션에 의도적으로 손대지 않은 것
+- 엑셀 업로드, 마을 그룹핑, 필지 직접 추가, juso 비활성 코드, 카카오 키 2개 자동 전환, 동선 계산 알고리즘 — 기존 로직 유지.
+- 요구사항 CDN의 `type="module"` + Analytics 초기화 블록은 **별도 `<script>`로 넣지 않음** — 단일 HTML(vanilla JS) 구조와 Realtime DB compat SDK 동적 로드 패턴(10번째 세션)이 충돌하지 않도록, 동일 `firebaseConfig` 값만 `FIREBASE_CONFIG` 상수로 사용.
+
+### **검증 안 됨 — 다음 세션에서 반드시 확인 필요 (11번째 세션 신규)**
+- ⚠️ Firebase Realtime Database 보안 규칙(8-4절 JSON)이 콘솔에 실제 등록됐는지, 두 브라우저에서 공유 카운터가 실시간으로 같이 오르는지.
+- ⚠️ 출발지 `keywordSearch`가 카카오 SDK `libraries=services` 로드 환경에서 실제 후보를 반환하는지.
+- ⚠️ `KAKAO_APP_KEYS[1]`이 아직 플레이스홀더 — 두 번째 키 자동 전환은 미설정.
+
 ### 10번째 세션 — 파이어베이스 공유 사용량 카운터 실제 구현
 
 **배경**: 9번째 세션에서 "카카오 사용량을 여러 조사원이 함께 보려면 Firebase / Cloudflare Functions+KV / Google Apps Script 중 하나를 골라야 한다"고 비교표만 정리해뒀는데, 사용자가 "클라우드플레어, 파이어베이스 둘다해줘"라고 요청함. **호스팅(Cloudflare Pages)과 사용량 공유 카운터(Firebase)는 서로 다른 목적의 별개 결정**이라고 해석해서 진행함 — 호스팅은 8-1절 계획대로 Cloudflare Pages를 그대로 쓰고(코드 변경 불필요, 정적 파일 배포), 사용량 공유 카운터는 세 후보 중 "서버 코드 없는 단일 HTML 유지"에 가장 잘 맞는 Firebase Realtime Database로 실제 구현함. 같은 목적(숫자 하나 공유)의 백엔드를 Cloudflare KV로 이중 구현하지는 않음 — 필요해지면 다음 세션에 추가 검토 가능하다고 사용자에게 안내함.
@@ -293,7 +313,9 @@
 - `geocodeVillages`/`geocodeParcels`/`searchStartAddress` 세 호출부 모두 `this.geocodeAddressJuso` 직접 참조가 남아있지 않고 `this.geocodeAddress` 디스패처를 통하는지 grep으로 확인함.
 
 ### **검증 안 됨 — 다음 세션에서 반드시 확인 필요**
-- ⚠️ **[8번째 세션 신규, 최우선]** `KAKAO_APP_KEYS` 배열 2칸이 아직 플레이스홀더(`'YOUR_KAKAO_JS_APP_KEY_1'`/`'_2'`)임 — 카카오 디벨로퍼스에서 (서로 다른 계정으로) 앱 2개 생성, 각각 배포 도메인을 "플랫폼 > Web"에 등록, 발급된 **JavaScript 키**(REST 키 아님) 2개로 교체해야 지오코딩이 실제로 동작함. 이번 세션은 코드 구조만 작성했고, 실제 브라우저에서 카카오 SDK를 호출해본 적은 없음(샌드박스 네트워크 제약, `dapi.kakao.com` 접근 불가). 특히 **동적 스크립트 교체(`loadKakaoSdkScript`)로 키 전환이 실제 브라우저에서 매끄럽게 되는지, 전환 중 진행 중이던 지오코딩 요청이 꼬이지 않는지 실측 필요.**
+- ⚠️ **[11번째 세션 신규]** Firebase 공유 카운터 + topbar `quotaBadge` + 출발지 키워드 검색 — 코드 반영 완료, 실제 브라우저/배포 환경에서 미검증.
+- ⚠️ **[10번째 세션]** `FIREBASE_CONFIG` 값은 11번째 세션에서 채워짐 — Realtime Database 보안 규칙 등록 및 다중 브라우저 실측은 여전히 필요.
+- ⚠️ **[8번째 세션 신규, 최우선]** `KAKAO_APP_KEYS` 배열 2번째 칸이 아직 플레이스홀더(`'YOUR_KAKAO_JS_APP_KEY_2'`)임 — 카카오 디벨로퍼스에서 (서로 다른 계정으로) 앱 2개 생성, 각각 배포 도메인을 "플랫폼 > Web"에 등록, 발급된 **JavaScript 키**(REST 키 아님) 2개로 교체해야 지오코딩이 실제로 동작함. 이번 세션은 코드 구조만 작성했고, 실제 브라우저에서 카카오 SDK를 호출해본 적은 없음(샌드박스 네트워크 제약, `dapi.kakao.com` 접근 불가). 특히 **동적 스크립트 교체(`loadKakaoSdkScript`)로 키 전환이 실제 브라우저에서 매끄럽게 되는지, 전환 중 진행 중이던 지오코딩 요청이 꼬이지 않는지 실측 필요.**
 - ⚠️ **[8번째 세션 신규]** 키 전환 로직이 "선제 전환(안전 마진 기준) + 사후 전환(애매한 에러 시 재시도)" 방식인데, **카카오 SDK가 진짜 쿼터초과와 다른 에러를 구분해주지 않아 정확도가 100%가 아님.** 실제로 한 키의 쿼터를 소진시켜보고(테스트 계정으로) 이 로직이 의도대로 다음 키로 넘어가는지, 아니면 오탐(다른 에러인데 키를 낭비하며 전환)이 잦은지 실측 필요.
 - ⚠️ **[8번째 세션 신규]** `kakao.maps.services.Geocoder.addressSearch()`가 juso.go.kr과 달리 **도로명주소 위주로 설계**되어 있어, 건물이 없는 순수 지번(농지·임야) 주소 인식률이 juso나 VWorld보다 낮을 가능성이 있음 — 실측 필요. 낮으면 지번을 도로명으로 먼저 변환하거나, 시군구+마을명까지만 잘라서 재시도하는 폴백 로직이 필요할 수 있음(아직 구현 안 함).
 - ⚠️ **[8번째 세션 신규]** 카카오 API의 "짧은 시간 몰아치기" 속도 제한(초당 호출 수 제한) 여부와 수치를 문서로 확인하지 못해, 이번 세션은 `paceMs=0`(페이싱 없음)으로 구현함 — 실제로 429 에러가 나는지, 나면 얼마나 빨리 나는지 실측 후 필요시 페이싱 추가해야 함.
@@ -318,7 +340,7 @@
 ## 6. 다음 세션에서 할 일 (우선순위 순)
 
 0. **[8번째 세션 신규, 최우선 — 9번째 세션에서 절차 문서화 완료, 실행은 아직 안 됨] `KAKAO_APP_KEYS` 플레이스홀더를 실제 JavaScript 키 2개로 교체.** 구체적 절차는 8절 "배포 가이드" 참고(비공개 저장소+Cloudflare Pages 배포 → 고정 도메인 확보 → 카카오 계정 2개로 앱 발급). 마지막 단계: 배포 후 마을/필지 지오코딩, 쿼터 카운터가 실제로 오르는지 테스트.
-0-2. **[10번째 세션 신규, 최우선] `FIREBASE_CONFIG` 플레이스홀더를 실제 값으로 교체 + Realtime Database 보안 규칙 붙여넣기.** 코드 상단 주석(443번째 줄 근처 `FIREBASE_CONFIG` 블록)에 설정 절차와 보안 규칙 JSON을 그대로 적어뒀음. 채운 뒤 브라우저 두 개(또는 시크릿 창 두 개)로 각각 카카오 지오코딩을 호출해서 "전체 조사원 합산" 숫자가 양쪽 화면에서 똑같이 실시간으로 오르는지 확인 필요 — 이번 세션은 샌드박스 네트워크 제약(gstatic.com/firebaseio.com 접근 불가)으로 실제 브라우저 호출 검증을 못 했음.
+0-2. **[10~11번째 세션] `FIREBASE_CONFIG` 값 채움 완료 — Realtime Database 보안 규칙 붙여넣기 + 다중 브라우저 실측만 남음.** 8-4절 JSON을 Firebase 콘솔에 등록한 뒤, 브라우저 두 개로 지오코딩 호출 시 topbar `quotaBadge` 숫자가 양쪽에서 같이 줄어드는지 확인.
 0-1. **[8번째 세션 신규] juso.go.kr 승인 신청은 별도로 계속 진행.** 승인 나면 `GEOCODE_PROVIDER`를 `'kakao'`에서 `'juso'`로 바꾸기만 하면 됨(코드 재작성 불필요) — `JUSO_SEARCH_KEY`/`JUSO_COORD_KEY` 플레이스홀더 교체는 그때 진행.
 1. **사용자에게 실제 엑셀 파일(또는 개인정보 제거한 더미본) 받아서 실제로 업로드 테스트** — 여전히 최우선. 특히 이번에 발견한 "시도 축약형(전북 등)" 인식 여부부터 확인.
 2. **[8번째 세션 신규] 카카오 지오코딩의 지번(농지·임야) 주소 인식률 실측** — juso/VWorld 대비 낮을 가능성 있음(위 5절 참고). 낮으면 폴백 로직(시군구+마을명만으로 재시도 등) 추가 검토.
@@ -412,7 +434,7 @@
 
 ## 9. 파일 위치
 
-- `/mnt/user-data/outputs/field_route_planner.html` — 실제 도구
-- `/mnt/user-data/outputs/HANDOFF.md` — 이 문서
+- `새 폴더/index (9).html` — 실제 도구 (11번째 세션 작업본)
+- `새 폴더/HANDOFF.md` — 이 문서
 
 다음 세션 시작할 때는 사용자가 `field_route_planner.html`과 이 `HANDOFF.md`를 다시 첨부해줘야 이어서 작업 가능함 (세션 간 파일이 자동으로 유지되지 않음).
