@@ -376,15 +376,14 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div class="geo-status" id="geoStatus">마을 위치 확인 전</div>
 
     <div class="card" id="parcelGeoCard" style="margin-top:2px;">
-      <h3 style="font-size:14.5px;margin-bottom:2px;">필지 단위 동선 계산</h3>
-      <p class="hint" style="margin-top:2px;">필지 단위는 마을 단위보다 호출이 훨씬 많아요.</p>
+      <h3 style="font-size:14.5px;margin-bottom:2px;">필지 동선 계산</h3>
       <div class="gps-row">
-        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
+        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인(필수)</button>
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
       </div>
       <div class="geo-status" id="parcelGeoStatus">필지 위치 확인 전</div>
 
-      <label class="fieldlabel" style="margin-top:10px;">출발지 (선택 — 없으면 임의의 필지에서 시작)</label>
+      <label class="fieldlabel" style="margin-top:10px;">출발지 (선택)</label>
       <div class="searchbar">
         <input type="text" id="startAddrInput" placeholder="예: 00시 00면, 또는 OO읍 OO리 123">
         <button onclick="App.searchStartCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
@@ -396,7 +395,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div class="gps-status" id="startPointStatus">출발지가 설정되지 않았어요</div>
 
-      <label class="fieldlabel" style="margin-top:14px;">기준별 순서 계산</label>
+      <label class="fieldlabel" style="margin-top:14px;">기준별 동선 계산</label>
       <div class="gps-row" style="margin-top:6px;">
         <button class="gps-btn" onclick="App.computeFlatOrder(false)">필지</button>
         <button class="gps-btn" onclick="App.computeFlatOrder(true)">출발지</button>
