@@ -1611,9 +1611,10 @@ const App = {
     // (14번째 세션, "여러 마을 섞이면 구분이 안 된다" 피드백 반영).
     const colorMap = villageColorMap(this.villageOrder);
 
-    // 마을 중심 좌표 (마을 좌표 자동계산 / GPS 태깅 결과) — 색 배지 + 마을명 태그로 표시해서
-    // 클릭 없이도 바로 어느 마을인지 보이도록 함(기존엔 기본 마커 + 클릭해야 보이는
-    // InfoWindow였음).
+    // 마을 중심 좌표 (마을 좌표 자동계산 / GPS 태깅 결과) — 필지 배지(작은 원)와 뚜렷이
+    // 구분되도록 큰 SVG 핀 모양(끝이 뾰족한 전형적인 지도 핀)으로 표시. 이모지(🏘️)는
+    // 너무 작아서 잘 안 보인다는 피드백으로 벡터 SVG 핀으로 교체함(14번째 세션).
+    // 핀의 뾰족한 끝(tip)이 정확히 좌표를 가리키도록 yAnchor:1로 앵커링.
     if(showVillages){
       this.villageOrder.forEach(k=>{
         const v = this.villages[k];
@@ -1621,12 +1622,14 @@ const App = {
         const color = colorMap[k];
         const pos = new kakao.maps.LatLng(v.centroid.lat, v.centroid.lng);
         const overlay = new kakao.maps.CustomOverlay({
-          position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 4,
-          content: `<div style="display:flex;align-items:center;">
-            <div style="width:26px;height:26px;border-radius:50%;background:${color};border:3px solid #fff;
-              box-shadow:0 1px 4px rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;font-size:13px;">🏘️</div>
-            <div style="margin-left:4px;background:${color};color:#fff;font-size:11.5px;font-weight:700;
-              padding:2px 8px;border-radius:6px;white-space:nowrap;box-shadow:0 1px 2px rgba(0,0,0,.3);">${v.name} (${v.parcels.length})</div>
+          position: pos, yAnchor: 1, xAnchor: 0.5, zIndex: 4,
+          content: `<div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="background:${color};color:#fff;font-size:11.5px;font-weight:700;padding:2px 8px;
+              border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.3);">${v.name} (${v.parcels.length})</div>
+            <svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));">
+              <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${color}" stroke="#fff" stroke-width="2"/>
+              <circle cx="14" cy="14" r="5.5" fill="#fff"/>
+            </svg>
           </div>`
         });
         overlay.setMap(_kakaoMap);
