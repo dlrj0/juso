@@ -689,6 +689,7 @@ let _kakaoMap = null;
 let _kakaoMapMarkers = [];
 let _kakaoRoutePolyline = null;
 let _kakaoNavRoutePolyline = null;
+let _kakaoNavRouteHaloPolyline = null;
 let _kakaoNavRouteMarkers = [];
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
@@ -1886,7 +1887,7 @@ const App = {
   clearNavSelection(){
     this._navSelectPoints = [];
     this._lastNavRoute = null;
-    if(_kakaoNavRoutePolyline){ _kakaoNavRoutePolyline.setMap(null); _kakaoNavRoutePolyline = null; }
+    this.clearNavRoutePolylineOnly();
     this.clearNavRouteVisuals();
     document.getElementById('navSelectPanel').classList.toggle('hidden', !this.navSelectMode);
     this.renderNavSelectPanel();
@@ -1945,21 +1946,37 @@ const App = {
       path: r.path,
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
-    if(_kakaoNavRoutePolyline){ _kakaoNavRoutePolyline.setMap(null); _kakaoNavRoutePolyline = null; }
+    this.clearNavRoutePolylineOnly();
     const showBox = document.getElementById('mapShowNavRoute');
     if(showBox){ showBox.disabled = false; }
     if(!showBox || showBox.checked){
-      _kakaoNavRoutePolyline = new kakao.maps.Polyline({
-        path: r.path, strokeWeight: 5, strokeColor: '#c0392b',
-        strokeOpacity: 0.9, strokeStyle: 'solid'
-      });
-      _kakaoNavRoutePolyline.setMap(_kakaoMap);
+      this.drawNavRoutePolyline(r.path);
       this.renderNavRouteVisuals();
       const bounds = new kakao.maps.LatLngBounds();
       r.path.forEach(p=>bounds.extend(p));
       _kakaoMap.setBounds(bounds);
     }
     this.renderNavSelectPanel();
+  },
+
+  // 길찾기 도로 폴리라인을 흰 테두리(halo) + 빨간 본선 두 겹으로 그림.
+  // 유턴 등으로 선이 겹칠 때, 얇은 본선만 있으면 구분이 안 되는 문제를 흰 테두리로 보완.
+  drawNavRoutePolyline(path){
+    this.clearNavRoutePolylineOnly();
+    _kakaoNavRouteHaloPolyline = new kakao.maps.Polyline({
+      path, strokeWeight: 7, strokeColor: '#ffffff',
+      strokeOpacity: 0.95, strokeStyle: 'solid'
+    });
+    _kakaoNavRouteHaloPolyline.setMap(_kakaoMap);
+    _kakaoNavRoutePolyline = new kakao.maps.Polyline({
+      path, strokeWeight: 3.5, strokeColor: '#c0392b',
+      strokeOpacity: 0.95, strokeStyle: 'solid'
+    });
+    _kakaoNavRoutePolyline.setMap(_kakaoMap);
+  },
+  clearNavRoutePolylineOnly(){
+    if(_kakaoNavRoutePolyline){ _kakaoNavRoutePolyline.setMap(null); _kakaoNavRoutePolyline = null; }
+    if(_kakaoNavRouteHaloPolyline){ _kakaoNavRouteHaloPolyline.setMap(null); _kakaoNavRouteHaloPolyline = null; }
   },
 
   // 길찾기 경로에 출발/경유/도착 마커와 진행 방향 화살표를 그림.
@@ -2005,7 +2022,7 @@ const App = {
     });
 
     // 진행 방향 화살표 — 경로를 몇 구간으로 나눠 각 구간 중간 지점에 방향 삼각형을 얹음
-    const ARROW_COUNT = Math.min(6, Math.max(2, Math.floor(path.length/12)));
+    const ARROW_COUNT = Math.min(14, Math.max(3, Math.floor(path.length/6)));
     if(path.length >= 4 && ARROW_COUNT > 0){
       for(let k=1; k<=ARROW_COUNT; k++){
         const idx = Math.round((path.length-1) * (k/(ARROW_COUNT+1)));
@@ -2071,12 +2088,18 @@ const App = {
       features.forEach(f=>{
         if(f.geometry && f.geometry.type==='LineString'){
           const coords = f.geometry.coordinates || [];
-          // 경유지가 산/임야 등 도로에서 너무 멀어 실제 경로를 못 찾으면, TMAP이 에러를 내는 대신
-          // 해당 구간을 좌표 2개짜리(출발-도착) 직선으로 채워서 응답할 때가 있음.
-          // → 좌표가 2개뿐인 구간 중, 직선거리가 일정 이상(150m)이면 "가짜 직선 구간"으로 간주.
-          if(coords.length===2){
-            const [lng1,lat1] = coords[0], [lng2,lat2] = coords[1];
-            if(haversineMeters(lat1,lng1,lat2,lng2) > 150){
+          // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
+          // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음.
+          // → "시작~끝 직선거리"와 "점들을 실제로 따라간 거리"가 거의 같으면(=꺾이지 않고 쭉 뻗음)
+          //   + 그 거리가 300m 넘으면, 도로가 아니라 직선으로 대체된 구간으로 간주.
+          if(coords.length>=2){
+            const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
+            const chord = haversineMeters(lat1,lng1,lat2,lng2);
+            let walked = 0;
+            for(let i=1;i<coords.length;i++){
+              walked += haversineMeters(coords[i-1][1],coords[i-1][0], coords[i][1],coords[i][0]);
+            }
+            if(chord > 300 && walked > 0 && (walked/chord) < 1.03){
               hasStraightFallback = true;
             }
           }
@@ -2348,15 +2371,10 @@ const App = {
     // 둘 다 켜면 동시에, 하나만 켜면 그것만 지도에 보임. 체크박스를 끄면 지우고, 다시
     // 켜면(그리고 계산된 경로가 있으면) 다시 그림 — API를 재호출하지 않음.
     if(!showNavRoute && _kakaoNavRoutePolyline){
-      _kakaoNavRoutePolyline.setMap(null);
-      _kakaoNavRoutePolyline = null;
+      this.clearNavRoutePolylineOnly();
       this.clearNavRouteVisuals();
     } else if(showNavRoute && !_kakaoNavRoutePolyline && this._lastNavRoute && this._lastNavRoute.path){
-      _kakaoNavRoutePolyline = new kakao.maps.Polyline({
-        path: this._lastNavRoute.path, strokeWeight: 5, strokeColor: '#c0392b',
-        strokeOpacity: 0.9, strokeStyle: 'solid'
-      });
-      _kakaoNavRoutePolyline.setMap(_kakaoMap);
+      this.drawNavRoutePolyline(this._lastNavRoute.path);
       this.renderNavRouteVisuals();
     }
     if(_kakaoNavRoutePolyline) any = true;
