@@ -1,0 +1,2463 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>현장조사 동선 정리</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<!-- 카카오맵 JS SDK는 여기서 정적으로 로드하지 않음. 키를 2개(계정 2개, 소진 시 자동 전환)
+     쓰기 때문에, 어느 키로 로드할지 런타임에 결정해서 script 태그를 동적으로 삽입함
+     (JS 하단 loadKakaoSdkScript() 참고). 두 앱 모두 카카오 디벨로퍼스 "플랫폼 > Web"에
+     이 페이지가 배포될 도메인을 등록해둬야 함.
+const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
+ -->
+<style>
+  :root{
+    --bg:#F6F6F2;
+    --surface:#FFFFFF;
+    --surface-2:#EDEBE2;
+    --border:#D9D6CB;
+    --text:#20241F;
+    --text-mute:#686F60;
+    --accent:#3C5A40;
+    --accent-dark:#2A4030;
+    --accent-soft:#E3EAE1;
+    --warn:#A8432F;
+    --warn-soft:#F5E2DC;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
+    --topbar-h:54px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;background:var(--bg);color:var(--text);font-family:var(--sans);}
+  body{padding-bottom:84px;}
+  h1,h2,h3{margin:0;font-weight:700;letter-spacing:-0.01em;}
+  button{font-family:inherit;cursor:pointer;}
+  input,select{font-family:inherit;}
+
+  .topbar{
+    position:sticky;top:0;z-index:20;background:var(--accent-dark);color:#fff;
+    padding:14px 16px;display:flex;align-items:center;justify-content:space-between;
+    min-height:var(--topbar-h);
+  }
+  .topbar .brand{display:flex;flex-direction:column;line-height:1.15;}
+  .topbar .brand b{font-size:15px;letter-spacing:0.02em;}
+  .topbar .brand span{font-size:11px;color:#C9D6C9;font-family:var(--mono);}
+  .topbar .step{font-size:11px;background:rgba(255,255,255,0.12);padding:4px 9px;border-radius:100px;font-family:var(--mono);}
+
+  .container{max-width:640px;margin:0 auto;padding:18px 16px 40px;}
+
+  /* ---- upload screen ---- */
+  .dropzone{
+    border:2px dashed var(--border);border-radius:16px;background:var(--surface);
+    padding:40px 20px;text-align:center;transition:border-color .15s,background .15s;
+  }
+  .dropzone.drag{border-color:var(--accent);background:var(--accent-soft);}
+  .dropzone .icon{font-size:34px;margin-bottom:10px;}
+  .dropzone h2{font-size:18px;margin-bottom:6px;}
+  .dropzone p{color:var(--text-mute);font-size:13.5px;margin:0 0 18px;line-height:1.5;}
+  .filebtn{
+    display:inline-block;background:var(--accent);color:#fff;padding:11px 22px;border-radius:10px;
+    font-size:14.5px;font-weight:600;border:none;
+  }
+  .privacy-note{
+    margin-top:16px;font-size:12px;color:var(--text-mute);background:var(--surface-2);
+    border-radius:10px;padding:10px 12px;line-height:1.5;
+  }
+
+  /* ---- mapping screen ---- */
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
+  .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--surface-2);}
+  .field-row:last-child{border-bottom:none;}
+  .field-row .label{font-size:13.5px;font-weight:600;}
+  .field-row .sample{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);}
+
+  /* 매핑 화면 "추가로 표시/내보낼 열" 체크박스 목록 — 17번째 세션 신규.
+     소재지/본번/부번/법정동코드/완료여부처럼 select로 직접 고르는 것과 달리,
+     추가 열은 몇 개가 될지 몰라서 체크박스 목록 형태로 구성함. */
+  .extra-actions{display:flex;gap:8px;margin-bottom:8px;}
+  .extra-actions button{flex:1;border:1px solid var(--border);border-radius:8px;background:#fff;padding:7px 0;font-size:12.5px;font-weight:600;color:var(--text-mute);}
+  .extra-col-list{max-height:260px;overflow-y:auto;border:1px solid var(--surface-2);border-radius:10px;}
+  .extra-col-row{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:13px;border-bottom:1px solid var(--surface-2);}
+  .extra-col-row:last-child{border-bottom:none;}
+  .extra-col-row input{width:17px;height:17px;flex-shrink:0;}
+  .extra-col-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  select.colselect{
+    border:1px solid var(--border);border-radius:8px;padding:7px 8px;font-size:13px;background:#fff;
+    max-width:150px;
+  }
+  .primary-btn{
+    width:100%;background:var(--accent);color:#fff;border:none;border-radius:12px;
+    padding:14px;font-size:15px;font-weight:700;margin-top:6px;
+  }
+  .primary-btn:disabled{background:#B8BBAF;}
+  .ghost-btn{
+    width:100%;background:transparent;color:var(--text-mute);border:1px solid var(--border);border-radius:12px;
+    padding:11px;font-size:13.5px;font-weight:600;margin-top:8px;
+  }
+
+  /* ---- select screen ---- */
+  .summary-bar{display:flex;gap:8px;margin-bottom:14px;}
+  .stat{flex:1;background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:10px 12px;}
+  .stat b{display:block;font-size:20px;font-family:var(--mono);}
+  .stat span{font-size:11px;color:var(--text-mute);}
+  .searchbar{
+    display:flex;gap:8px;margin-bottom:10px;
+  }
+  .searchbar input{
+    flex:1;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;
+  }
+  .sigungu-select{border:1px solid var(--border);border-radius:10px;padding:10px;font-size:13.5px;background:#fff;}
+  .select-actions{display:flex;gap:8px;margin:10px 0 14px;}
+  .select-actions button{
+    flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:9px;font-size:12.5px;font-weight:600;color:var(--text);
+  }
+  .village-item{
+    display:flex;align-items:center;gap:12px;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:12px 14px;margin-bottom:8px;
+  }
+  .village-item input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent);flex-shrink:0;}
+  .village-item .name{font-size:14.5px;font-weight:600;}
+  .village-item .sub{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);}
+  .village-item .count{
+    margin-left:auto;font-family:var(--mono);font-size:12.5px;background:var(--surface-2);
+    padding:3px 9px;border-radius:100px;flex-shrink:0;
+  }
+  .sticky-bottom{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;background:var(--surface);
+    border-top:1px solid var(--border);padding:12px 16px;display:flex;gap:10px;
+  }
+  .sticky-bottom .primary-btn{margin:0;}
+  .sticky-bottom .count-pill{
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:13px;
+    color:var(--text-mute);white-space:nowrap;padding:0 6px;
+  }
+
+  /* ---- route screen ---- */
+  /* "다음 조사지" 카드 — 상단바 바로 아래에 고정(sticky)해서 스크롤해도 항상 보이도록 함
+     (15번째 세션 요청). 상단바 높이(--topbar-h) 바로 밑에 딱 붙게 top 값을 맞춤. */
+  .next-card{
+    background:var(--accent-dark);color:#fff;border-radius:16px;padding:16px 18px;margin-bottom:14px;
+    position:sticky;top:var(--topbar-h);z-index:15;box-shadow:0 4px 10px rgba(0,0,0,0.12);
+  }
+  .next-card .eyebrow{font-size:11px;letter-spacing:0.08em;color:#B9CBB8;font-family:var(--mono);text-transform:uppercase;}
+  .next-card .addr{font-size:17px;font-weight:700;margin:6px 0 2px;line-height:1.35;}
+  .next-card .jibun{font-family:var(--mono);font-size:13px;color:#D6E2D5;}
+  .next-card .done-all{font-size:13.5px;color:#D6E2D5;padding:6px 0;}
+
+  .gps-row{display:flex;gap:8px;margin-bottom:14px;}
+  .gps-btn{
+    flex:1;background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:11px;
+    font-size:13px;font-weight:600;text-align:center;
+  }
+  .gps-btn.active{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft);}
+  .gps-status{font-size:11.5px;color:var(--text-mute);text-align:center;margin:-8px 0 14px;font-family:var(--mono);}
+
+  .village-group{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden;}
+  .vg-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;}
+  .vg-head .order-badge{
+    width:26px;height:26px;border-radius:8px;background:var(--surface-2);color:var(--text);
+    display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12.5px;font-weight:700;flex-shrink:0;
+  }
+  .vg-head .info{flex:1;min-width:0;}
+  .vg-head .info .name{font-size:14.5px;font-weight:700;}
+  .vg-head .info .prog{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);}
+  .vg-head{flex-wrap:wrap;}
+  .vg-head .movebtns{display:flex;gap:4px;}
+  .vg-head .movebtns button, .vg-head .locbtn{
+    width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:13px;color:var(--text-mute);
+  }
+  .vg-head .locbtn.set{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft);}
+  /* 마을 펼치기/접기 버튼 — 15번째 세션에 14px 얇은 텍스트 화살표에서 30x30으로
+     한 번 키웠는데도 여전히 작다는 피드백(17번째 세션)으로 한 번 더 확대.
+     다른 head 버튼(locbtn/movebtns 30x30)보다 눈에 띄게 크게(44x40) 만들고,
+     탭 영역이 줄바꿈으로 밀리지 않도록 vg-head에 flex-wrap도 같이 줌. */
+  .vg-head .chevron{
+    width:44px;height:40px;border-radius:10px;border:1px solid var(--border);background:#fff;
+    font-size:19px;color:var(--text);flex-shrink:0;display:flex;align-items:center;justify-content:center;
+  }
+
+  .parcel-list{border-top:1px solid var(--surface-2);}
+  .parcel-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--surface-2);}
+  .parcel-row:last-child{border-bottom:none;}
+  .parcel-row.done{opacity:0.5;}
+  .parcel-row .pnum{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);width:18px;flex-shrink:0;}
+  .parcel-row .pinfo{flex:1;min-width:0;}
+  .parcel-row .pinfo .addr{font-size:13.5px;line-height:1.4;}
+  .parcel-row .pinfo .jibun{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);}
+  .parcel-row .pinfo .extra{font-size:11px;color:var(--text-mute);margin-top:2px;}
+  .parcel-row .pmove{display:flex;gap:3px;flex-shrink:0;}
+  .parcel-row .pmove button{
+    width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:12px;color:var(--text-mute);
+  }
+  .parcel-row .pcheck{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0;}
+
+  .empty-note{text-align:center;padding:50px 20px;color:var(--text-mute);font-size:13.5px;line-height:1.6;}
+  .backlink{display:inline-block;margin-bottom:14px;font-size:12.5px;color:var(--text-mute);cursor:pointer;}
+  .hidden{display:none !important;}
+  .warn-badge{background:var(--warn-soft);color:var(--warn);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:100px;margin-left:6px;}
+
+  /* ---- gear / modals ---- */
+  .gearbtn{background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:8px;width:30px;height:30px;font-size:14px;flex-shrink:0;}
+
+  /* 화면전환/스크롤 플로팅 동그란 버튼 묶음 (15번째 세션) — 예전엔 상단에 큰 세그먼트
+     스위치(.screen-switch)로 계산/지도 화면을 전환했는데, "스위치 말고 동그란 버튼으로,
+     스크롤 버튼 옆에" 요청을 반영해 우측 하단에 떠 있는 동그란 버튼 묶음으로 교체함.
+     화면전환 버튼은 현재 화면의 "반대쪽 화면"으로 가는 아이콘을 보여주는 토글 버튼 1개,
+     스크롤 버튼은 현재 스크롤 위치에 따라 ▲(맨 위로)/▼(맨 아래로) 아이콘이 동적으로 바뀜.
+     route 화면에서는 하단에 sticky-bottom(엑셀로 내보내기) 바가 있어 그 위로, map
+     화면에서는 sticky-bottom이 없어 더 아래쪽에 뜨도록 .with-sticky 클래스로 위치를 조정. */
+  .fab-stack{
+    position:fixed;right:16px;bottom:20px;z-index:25;display:flex;flex-direction:column;gap:10px;
+    transition:bottom .15s ease;
+  }
+  .fab-stack.with-sticky{ bottom:96px; }
+  .fab-btn{
+    width:48px;height:48px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
+    box-shadow:0 2px 10px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;
+    font-size:19px;color:var(--text);padding:0;
+  }
+  .fab-btn.accent{ background:var(--accent);border-color:var(--accent);color:#fff; }
+
+  /* 마을별 보기 ↔ 계산된 순서 보기 슬라이딩 스위치 (15번째 세션) — 예전엔 두 개의
+     따로 노는 버튼(← 마을별 보기로 전환 / 📐 계산된 순서 보기)이었는데, 문구를 통일하고
+     좌우로 슬라이딩되는 스위치 하나로 합침. 상단 계산/지도 스위치(이제는 제거됨)와
+     같은 느낌의 슬라이딩 하이라이트 구조를 재사용. */
+  .view-switch{
+    display:flex;position:relative;background:var(--surface);border:1px solid var(--border);
+    border-radius:12px;padding:3px;margin-bottom:12px;gap:2px;
+  }
+  .view-switch .vsw-highlight{
+    position:absolute;top:3px;bottom:3px;left:3px;width:calc(50% - 3px);
+    background:var(--accent);border-radius:9px;transition:transform .2s ease;z-index:1;
+  }
+  .view-switch .vsw-highlight.pos-flat{ transform:translateX(100%); }
+  .view-switch button{
+    position:relative;z-index:2;flex:1;border:none;background:transparent;
+    padding:10px 8px;font-size:13.5px;font-weight:700;border-radius:9px;
+    color:var(--text-mute);transition:color .15s;
+  }
+  .view-switch button.active{ color:#fff; }
+
+  /* 마을별 색 구분 범례 (14번째 세션) — 지도 화면에서 색 점 + 마을명을 나열해,
+     필지/마을 마커에 칠해진 색이 어느 마을인지 바로 대조해볼 수 있게 함.
+     15번째 세션: <span>이 아니라 <button>으로 바꿔서, 탭하면 그 마을 핀만 켜고/끌 수
+     있는 개별 토글 역할을 겸함 — 꺼진(.off) 마을은 흐리게 표시. */
+  .village-legend{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0 2px;}
+  .village-legend .vl-chip{
+    display:flex;align-items:center;gap:5px;background:var(--surface);border:1px solid var(--border);
+    border-radius:100px;padding:4px 10px 4px 8px;font-size:12px;font-weight:600;color:var(--text);
+  }
+  .village-legend .vl-chip.off{ opacity:0.45; }
+  .village-legend .vl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+  .topbar-right{display:flex;align-items:center;gap:8px;}
+  .modal{position:fixed;inset:0;background:rgba(20,24,19,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
+  .modal-card{background:#fff;border-radius:16px 16px 0 0;padding:20px 18px 28px;width:100%;max-width:640px;max-height:82vh;overflow-y:auto;}
+  .modal-card h3{margin-bottom:4px;font-size:16px;}
+  .modal-card label.fieldlabel{display:block;font-size:12.5px;font-weight:600;margin:14px 0 4px;}
+  .modal-card input[type=text]{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;}
+  .modal-card .row-btns{display:flex;gap:8px;margin:8px 0 4px;}
+  .modal-card .row-btns button{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12.5px;font-weight:600;color:var(--text);}
+  .hint{font-size:12px;color:var(--text-mute);line-height:1.55;margin:6px 0;}
+  .hint b{color:var(--text);}
+  .exportcol-row{display:flex;align-items:center;gap:9px;padding:8px 0;font-size:13.5px;border-bottom:1px solid var(--surface-2);}
+  .exportcol-row input{width:18px;height:18px;accent-color:var(--accent);flex-shrink:0;}
+  .geo-status{font-size:11.5px;color:var(--text-mute);text-align:center;margin:-6px 0 14px;font-family:var(--mono);line-height:1.5;}
+
+  /* ---- manual parcel add (upload screen) ---- */
+  #manualAddCard{margin-top:14px;}
+  #manualAddCard label.fieldlabel{display:block;font-size:12.5px;font-weight:600;margin:12px 0 4px;}
+  #manualAddCard label.fieldlabel:first-of-type{margin-top:4px;}
+  #manualAddCard input[type=text]{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;}
+  #manualAddCard .two-col{display:flex;gap:8px;}
+  #manualAddCard .two-col > div{flex:1;min-width:0;}
+  #manualAddCard .manual-chip-row{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 4px;}
+  #manualAddCard .manual-chip{
+    display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);color:var(--accent-dark);
+    border-radius:100px;padding:5px 6px 5px 12px;font-size:12.5px;font-weight:600;
+  }
+  #manualAddCard .manual-chip button{
+    background:none;border:none;color:var(--accent-dark);opacity:0.6;font-size:15px;line-height:1;
+    padding:2px 5px;cursor:pointer;
+  }
+  #manualAddCard .manual-addcol{
+    margin-top:14px;padding-top:12px;border-top:1px dashed var(--border);
+  }
+  #manualAddCard .manual-parcel-list{margin-top:12px;border-top:1px solid var(--surface-2);}
+  #manualAddCard .manual-parcel-row{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 0;
+    border-bottom:1px solid var(--surface-2);
+  }
+  #manualAddCard .mp-info{min-width:0;}
+  #manualAddCard .mp-addr{font-size:13px;line-height:1.4;}
+  #manualAddCard .mp-jibun{font-family:var(--mono);font-size:11px;color:var(--text-mute);}
+  #manualAddCard .mp-extra{font-size:11px;color:var(--text-mute);margin-top:1px;}
+  #manualAddCard .manual-parcel-row button{
+    flex-shrink:0;background:transparent;border:1px solid var(--border);border-radius:8px;
+    padding:6px 10px;font-size:12px;color:var(--warn);
+  }
+  #manualAddCard .manual-count{font-size:12.5px;color:var(--text-mute);margin-top:10px;}
+  #manualAddCard .manual-count b{color:var(--text);}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand"><b>현장조사 동선 정리</b><span id="topbarSub">FIELD ROUTE</span></div>
+  <div class="topbar-right">
+    <span id="quotaBadge" style="font-size:11px;background:rgba(255,255,255,0.12);padding:4px 9px;border-radius:100px;font-family:var(--mono);"></span>
+    <button class="gearbtn" onclick="App.openSettings()" title="설정">⚙</button>
+    <div class="step" id="stepBadge">업로드</div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- SCREEN 1: UPLOAD -->
+  <div id="screen-upload">
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📄</div>
+      <h2>주소 엑셀 업로드</h2>
+      <p>소재지(주소) 컬럼이 있는 엑셀이라면 무엇이든 올려보세요.<br>주소를 마을 단위로 자동 정리하고 방문 순서까지 계산해드려요.</p>
+      <label class="filebtn">파일 선택<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;"></label>
+    </div>
+    <div class="card" id="manualAddCard">
+      <h3 style="font-size:15px;margin-bottom:4px;">필지 직접 추가</h3>
+      <p class="hint" style="margin-top:0;">몇 개 필지만 조사할 때는 엑셀 없이 여기서 바로 추가해서 시작할 수 있어요.</p>
+
+      <div id="manualParcelForm"></div>
+      <button class="ghost-btn" style="margin-top:10px;" onclick="App.addManualParcel()">+ 이 필지 추가</button>
+
+      <div id="manualParcelListWrap"></div>
+
+      <button class="primary-btn hidden" id="manualStartBtn" onclick="App.startFromManual()">추가한 필지로 시작하기</button>
+    </div>
+  </div>
+
+  <!-- SCREEN 1.5: SHEET PICKER (multi-sheet files only) -->
+  <div id="screen-sheetpick" class="hidden">
+    <span class="backlink" onclick="App.goScreen('upload')">← 다른 파일 올리기</span>
+    <div id="sheetPickerBox"></div>
+  </div>
+
+  <!-- SCREEN 2: MAPPING -->
+  <div id="screen-mapping" class="hidden">
+    <span class="backlink" onclick="App.goScreen('upload')">← 다른 파일 올리기</span>
+    <div class="card">
+      <h3 style="font-size:15px;margin-bottom:4px;">컬럼 확인</h3>
+      <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 4px;">자동으로 찾았어요. 다르면 직접 골라주세요. (법정동코드가 있으면, 좌표 없이도 마을 순서를 정렬하는 데 참고용으로 쓸 수 있어요. 완료여부 열이 있는 파일을 올리면 완료 상태를 그대로 불러와요)</p>
+      <div id="mappingFields"></div>
+    </div>
+    <div class="card">
+      <h3 style="font-size:14.5px;margin-bottom:2px;">추가로 표시/내보낼 열</h3>
+      <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 8px;">체크한 열은 각 필지 아래에 같이 보이고, 엑셀로 내보낼 때도 고를 수 있어요. 자주 쓰는 열은 기본으로 체크돼 있어요 — 필요한 대로 바꾸세요.</p>
+      <div id="mappingExtraFields"></div>
+    </div>
+    <button class="primary-btn" id="mappingConfirmBtn" onclick="App.confirmMapping()">필지 목록 만들기</button>
+  </div>
+
+  <!-- SCREEN 3: VILLAGE SELECT -->
+  <div id="screen-select" class="hidden">
+    <span class="backlink" onclick="App.goScreen('upload')">← 다른 파일 올리기</span>
+    <div class="summary-bar">
+      <div class="stat"><b id="selStatTotal">0</b><span>전체 필지</span></div>
+      <div class="stat"><b id="selStatVillages">0</b><span>마을 수</span></div>
+      <div class="stat"><b id="selStatChecked">0</b><span>선택된 필지</span></div>
+    </div>
+    <select class="sigungu-select" id="sigunguFilter" onchange="App.renderVillageList()" style="width:100%;margin-bottom:10px;"></select>
+    <div class="searchbar">
+      <input type="text" id="villageSearch" placeholder="마을 이름으로 검색 (예: 대야면)" oninput="App.renderVillageList()">
+    </div>
+    <div class="select-actions">
+      <button onclick="App.selectAllVisible(true)">보이는 마을 전체선택</button>
+      <button onclick="App.selectAllVisible(false)">전체 해제</button>
+    </div>
+    <div id="villageList"></div>
+  </div>
+
+  <!-- SCREEN 4: ROUTE -->
+  <div id="screen-route" class="hidden">
+    <span class="backlink" onclick="App.goScreen('select')">← 마을 다시 선택</span>
+
+    <div class="next-card" id="nextCard"></div>
+
+    <div class="gps-row">
+      <button class="gps-btn" id="gpsBtn" onclick="App.getCurrentPosition()">내 위치 확인</button>
+      <button class="gps-btn" id="suggestBtn" onclick="App.suggestOrder()" disabled>마을 순서 추천</button>
+    </div>
+    <div class="gps-status" id="gpsStatus">위치를 아직 확인하지 않았어요</div>
+
+    <div class="gps-row">
+      <button class="gps-btn" id="geocodeBtn" onclick="App.geocodeVillages()">마을 위치 확인</button>
+      <button class="gps-btn" id="codeSortBtn" onclick="App.sortByLegalCode()">법정동코드순 정렬</button>
+    </div>
+    <div class="geo-status" id="geoStatus">마을 위치 확인 전</div>
+
+    <div class="card" id="parcelGeoCard" style="margin-top:2px;">
+      <h3 style="font-size:14.5px;margin-bottom:2px;">필지 동선 계산(필수)</h3>
+      <div class="gps-row">
+        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
+        <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
+      </div>
+      <div class="geo-status" id="parcelGeoStatus">필지 위치 확인 전</div>
+
+      <label class="fieldlabel" style="margin-top:10px;">출발지(선택)</label>
+      <div class="searchbar">
+        <input type="text" id="startAddrInput" placeholder="예: 00시 00면, 또는 OO읍 OO리 123">
+        <button onclick="App.searchStartCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
+      </div>
+      <div id="startCandidates"></div>
+      <div class="gps-row" style="margin-top:8px;">
+        <button class="gps-btn" id="startGpsBtn" onclick="App.setStartFromGPS()">현재 위치로 설정</button>
+        <button class="gps-btn" onclick="App.clearStartPoint()">✕ 지우기</button>
+      </div>
+      <div class="gps-status" id="startPointStatus">출발지가 설정되지 않았어요</div>
+
+      <label class="fieldlabel" style="margin-top:14px;">기준별 동선 계산(필수)</label>
+      <div class="gps-row" style="margin-top:6px;">
+        <button class="gps-btn" onclick="App.computeFlatOrder(false)">필지</button>
+        <button class="gps-btn" onclick="App.computeFlatOrder(true)">출발지</button>
+      </div>
+    </div>
+
+    <div id="routeList"></div>
+  </div>
+
+  <div id="screen-map" class="hidden">
+    <span class="backlink" onclick="App.goScreen('route')">← 계산 화면으로</span>
+
+    <div class="gps-row">
+      <button class="gps-btn" id="mapGpsBtn" onclick="App.toggleMapGps()">내 위치</button>
+      <button class="gps-btn" onclick="App.fitMapToMarkers()">전체</button>
+    </div>
+    <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:2px;">
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers()"> 🏘️ 마을
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers()"> 📍 필지
+      </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers()"> ➰ 필지 순서선
+      </label>
+    </div>
+    <div class="gps-status" id="mapGpsStatus">내 위치는 아직 켜지 않았어요</div>
+    <div class="gps-status hidden" id="routeLineStatus"></div>
+    <div class="village-legend hidden" id="mapVillageLegend"></div>
+    <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요.</p>
+
+    <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
+    <p class="hint" style="margin-top:6px;">지도 표시·내 위치 확인은 카카오 API를 추가로 호출하지 않아요 — 이미 계산해둔 좌표를 화면에 핀으로 찍어줄 뿐입니다.</p>
+  </div>
+
+</div>
+
+<!-- SETTINGS MODAL -->
+<div id="settingsModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>설정</h3>
+    <p class="hint">여기 입력한 내용은 <b>이 브라우저에만</b> 저장돼요. 서버로 전송되거나 내보내기 파일에 포함되지 않습니다.</p>
+
+    <label class="fieldlabel">카카오 API 사용량</label>
+    <div id="kakaoQuotaBox" class="hint" style="font-family:var(--mono);"></div>
+
+    <label class="fieldlabel">마을 좌표 참조표</label>
+    <p class="hint">한 번 조회하거나 GPS로 태깅한 마을 좌표는 이 브라우저에 자동으로 쌓여서, 다음에 같은 마을이 나오면 다시 조회하지 않아요. 이 참조표를 파일로 내보내 동료에게 공유하면, 동료는 API 조회 없이도 같은 마을 좌표를 바로 쓸 수 있어요.</p>
+    <div class="row-btns">
+      <button onclick="App.importCoordRef()">참조표 불러오기</button>
+      <button onclick="App.exportCoordRef()">참조표 내보내기</button>
+    </div>
+    <input type="file" id="coordRefFile" accept=".json" style="display:none" onchange="App.handleCoordRefFile(event)">
+    <div id="coordRefCount" class="hint"></div>
+
+    <button class="ghost-btn" onclick="App.closeSettings()">닫기</button>
+  </div>
+</div>
+
+<!-- EXPORT MODAL -->
+<div id="exportModal" class="modal hidden">
+  <div class="modal-card">
+    <h3>내보낼 항목 선택</h3>
+    <p class="hint"><b>순서·마을·시군구·소재지·본번·부번·완료여부</b>는 항상 포함돼요. 아래 항목은 필요한 것만 선택하세요 — 선택하지 않은 정보는 내보낸 엑셀 파일에 들어가지 않습니다.</p>
+    <div id="exportColChecks"></div>
+    <button class="primary-btn" onclick="App.doExport()">이 항목으로 내보내기</button>
+    <button class="ghost-btn" onclick="App.closeExportModal()">취소</button>
+  </div>
+</div>
+
+<!-- 계산/지도 전환 + 스크롤 이동 플로팅 동그란 버튼 (15번째 세션) — route/map 화면에서만
+     보이고, App.goScreen()이 hidden 여부·아이콘·bottom 위치를 갱신함. -->
+<div class="fab-stack hidden" id="fabStack">
+  <button class="fab-btn" id="fabScrollBtn" onclick="App.handleFabScroll()" title="스크롤 이동">▼</button>
+  <button class="fab-btn accent" id="fabScreenBtn" onclick="App.toggleScreenSwitch()" title="화면 전환">🗺️</button>
+</div>
+
+<div class="sticky-bottom" id="stickyBottom" style="display:none;">
+  <div class="count-pill" id="bottomProgress">0/0 완료</div>
+  <button class="primary-btn" onclick="App.openExportModal()">엑셀로 내보내기</button>
+</div>
+
+<script>
+const KEYWORDS = ['소재지','법정동코드','대장구분코드','본번','부번','지목','면적','소유자명','소유인수',
+  '조사상태','불법의심신고','AI탐지','시설물','심층조사결과','기본조사결과','조사대상'];
+const EXTRA_KEYS = ['소유자명','조사상태','불법의심신고','지목'];
+const LEVEL1 = ['특별자치시','특별자치도','특별시','광역시','도'];
+const LEVEL2 = ['시','군','구'];
+const LEVEL3 = ['읍','면','동','가'];
+const LEVEL4 = ['리'];
+
+function normHeader(t){
+  if(t===undefined||t===null) return '';
+  return String(t).replace(/\s+/g,'').replace(/^\(\d+\)/,'').replace(/["'「」]/g,'').trim();
+}
+function classifyToken(tok){
+  for(const s of LEVEL1) if(tok.endsWith(s) && tok.length>s.length) return 'lvl1';
+  for(const s of LEVEL2) if(tok.endsWith(s) && tok.length>s.length) return 'lvl2';
+  for(const s of LEVEL3) if(tok.endsWith(s) && tok.length>s.length) return 'lvl3';
+  for(const s of LEVEL4) if(tok.endsWith(s) && tok.length>s.length) return 'lvl4';
+  return 'other';
+}
+function parseAddress(addr){
+  const tokens = String(addr).trim().split(/\s+/);
+  let r = {lvl1:'',lvl2:'',lvl3:'',lvl4:'',rest:[]};
+  for(const tok of tokens){
+    const cls = classifyToken(tok);
+    if(cls==='lvl1' && !r.lvl1) r.lvl1=tok;
+    else if(cls==='lvl2' && !r.lvl2) r.lvl2=tok;
+    else if(cls==='lvl3' && !r.lvl3) r.lvl3=tok;
+    else if(cls==='lvl4' && !r.lvl4) r.lvl4=tok;
+    else r.rest.push(tok);
+  }
+  const villageName = [r.lvl3,r.lvl4].filter(Boolean).join(' ') || r.lvl2 || r.lvl1 || '미분류';
+  const villageKey = [r.lvl1,r.lvl2,r.lvl3,r.lvl4].filter(Boolean).join('|') || 'UNK';
+  const sigunguKey = [r.lvl1,r.lvl2].filter(Boolean).join(' ') || '기타';
+  return {...r, villageName, villageKey, sigunguKey};
+}
+function haversine(lat1,lng1,lat2,lng2){
+  const R=6371;
+  const dLat=(lat2-lat1)*Math.PI/180, dLng=(lng2-lng1)*Math.PI/180;
+  const a=Math.sin(dLat/2)**2+Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
+}
+
+// ---- 지오코딩 제공자 스위치 ----
+// 'kakao': 카카오맵 API 사용 (현재 기본값 — juso.go.kr 승인 대기 중이라 임시로 씀)
+// 'juso' : 행정안전부 juso.go.kr 사용 (승인 나면 이 값으로 바꾸면 아래 juso 관련
+//          코드가 그대로 다시 켜짐 — 별도로 코드를 되살릴 필요 없음)
+// juso.go.kr은 총량 무제한(짧은 시간 몰아치기만 제한)이라 승인만 나면 이쪽이
+// 더 안전한 선택. 승인 신청 자체는 이미 넣어뒀고, 대기 중에도 서비스가 멈추지
+// 않도록 카카오로 우선 배포함 (8번째 세션 결정, HANDOFF.md 참고).
+const GEOCODE_PROVIDER = 'kakao';
+
+// ---- 카카오맵 API (services.Geocoder) helpers — 계정 2개(키 2개) 자동 전환 ----
+// ⚠️ 카카오 디벨로퍼스(https://developers.kakao.com)에서 "서로 다른 계정으로" 앱을 2개
+// 만들고, 각각 "플랫폼 > Web"에 이 페이지가 배포될 도메인을 등록한 뒤, 발급된
+// "JavaScript 키"(REST 키 아님 — REST 키는 브라우저 직접 호출 시 CORS로 막히는 경우가
+// 많아 SDK 경로를 씀) 2개를 아래 배열에 순서대로 넣으면 됨.
+const KAKAO_APP_KEYS = ['3cee8237a39ce9a6fd5e6679220f48ba', 'YOUR_KAKAO_JS_APP_KEY_2'];
+// Firebase Realtime Database — 카카오 API 공유 사용량 카운터 (HANDOFF.md 8-4절, 10번째 세션)
+// Realtime Database > 규칙 탭:
+// {
+//   "rules": {
+//     "kakaoQuotaShared": {
+//       "$keyIdx": {
+//         "$date": {
+//           ".read": true,
+//           ".write": "newData.isNumber() && newData.val() >= 0 && (!data.exists() || newData.val() === data.val() + 1)"
+//         }
+//       }
+//     }
+//   }
+// }
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyDNUFDQHnVFxCCEk1iHb17_hQCjG_t6V4E",
+  authDomain: "juso-dec15.firebaseapp.com",
+  databaseURL: "https://juso-dec15-default-rtdb.firebaseio.com",
+  projectId: "juso-dec15",
+  storageBucket: "juso-dec15.firebasestorage.app",
+  messagingSenderId: "140469810518",
+  appId: "1:140469810518:web:6876c90e17f69d687912f7",
+  measurementId: "G-W1VPWQTQE5"
+};
+function isFirebaseConfigured(){
+  return !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.databaseURL && !String(FIREBASE_CONFIG.apiKey).startsWith('YOUR_'));
+}
+let _sharedKakaoQuota = {};
+let _firebaseReadyPromise = null;
+function loadFirebaseSdkScripts(){
+  return new Promise((resolve, reject)=>{
+    const urls = [
+      'https://www.gstatic.com/firebasejs/12.17.1/firebase-app-compat.js',
+      'https://www.gstatic.com/firebasejs/12.17.1/firebase-database-compat.js'
+    ];
+    let loaded = 0;
+    urls.forEach(src=>{
+      const script = document.createElement('script');
+      script.src = src;
+      script.onload = ()=>{ if(++loaded === urls.length) resolve(); };
+      script.onerror = ()=> reject(new Error('firebase-sdk-load-error'));
+      document.head.appendChild(script);
+    });
+  });
+}
+async function ensureFirebaseReady(){
+  if(!isFirebaseConfigured()) return null;
+  if(!_firebaseReadyPromise){
+    _firebaseReadyPromise = loadFirebaseSdkScripts().then(()=>{
+      if(!firebase.apps.length) firebase.initializeApp(FIREBASE_CONFIG);
+      return firebase.database();
+    });
+  }
+  return _firebaseReadyPromise;
+}
+function bumpSharedKakaoQuota(idx){
+  if(!isFirebaseConfigured()) return;
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    db.ref(`kakaoQuotaShared/${idx}/${todayKeyKST()}`).transaction(current=>(current||0)+1).catch(()=>{});
+  }).catch(()=>{});
+}
+function subscribeSharedKakaoQuota(){
+  if(!isFirebaseConfigured()) return;
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    KAKAO_APP_KEYS.forEach((key,i)=>{
+      if(!isKakaoKeyConfigured(key)) return;
+      db.ref(`kakaoQuotaShared/${i}/${todayKeyKST()}`).on('value', snap=>{
+        _sharedKakaoQuota[i] = snap.val() || 0;
+        App.renderKakaoQuota();
+      });
+    });
+  }).catch(()=>{});
+}
+// 카카오 로컬 API 무료 쿼터: 앱(=키 1개) 전체 합산 기준 일 100,000건.
+// 조사원 개인별이 아니라 그 키를 쓰는 모든 조사원이 나눠 쓰는 공동 풀이라는 점 주의.
+const KAKAO_DAILY_LIMIT = 100000;
+// ⚠️ 중요한 한계: 카카오 JS SDK의 Geocoder 콜백은 "성공/결과없음/에러" 정도만 알려줄 뿐,
+// 그 에러가 진짜 쿼터 초과인지 다른 이유(네트워크 등)인지 구분해서 알려주지 않음(REST API라면
+// HTTP 429로 구분 가능하지만 SDK는 이를 숨김). 그래서 이 코드는 "실제 소진 여부"를 정확히
+// 감지하는 대신, ①이 브라우저가 오늘 그 키로 몇 번 불렀는지 세어 안전 마진 지점에서
+// 미리 다음 키로 넘어가고, ②그래도 에러가 나면 한 번은 다음 키로 재시도하는 방식으로
+// 동작함. 100% 정확하지는 않음 — 아래 HANDOFF.md "검증 안 됨" 참고.
+const KAKAO_SWITCH_THRESHOLD = Math.floor(KAKAO_DAILY_LIMIT * 0.97); // 안전 마진 3%
+
+let _kakaoKeyIndex = 0;          // 현재 사용 중인 키의 KAKAO_APP_KEYS 인덱스
+let _kakaoSdkLoadedIndex = null; // 현재 <script>로 실제 로드되어 있는 키의 인덱스
+let _kakaoSdkLoadPromise = null;
+
+// ---- 지도 보기 화면 상태 ----
+// 지도 인스턴스는 한 번만 만들고 재사용함 (화면 전환마다 새로 만들지 않음).
+// 마커/GPS는 순수 표시용이라 카카오 API 호출량(쿼터)과 전혀 무관 — 좌표는
+// 이미 geocodeVillages/geocodeParcels 단계에서 계산이 끝난 값을 그대로 찍는 것뿐이고,
+// 내 위치는 브라우저 GPS(navigator.geolocation)만 씀.
+let _kakaoMap = null;
+let _kakaoMapMarkers = [];   // 마을/필지 마커들 — 지도 다시 그릴 때마다 지우고 새로 찍음
+let _kakaoRoutePolyline = null; // 필지 순서 연결선 — 지도 다시 그릴 때마다 지우고 새로 그림
+let _kakaoUserMarker = null; // 내 위치 마커 (파란 점)
+let _kakaoGpsWatchId = null; // navigator.geolocation.watchPosition 핸들
+
+function isKakaoKeyConfigured(key){ return !!key && !key.startsWith('YOUR_KAKAO'); }
+
+function todayKeyKST(){
+  // 카카오 쿼터는 자정(한국시간) 기준으로 초기화된다고 가정 — 브라우저 로컬 시간대가
+  // KST가 아닐 수도 있어 UTC+9로 명시 계산.
+  const kst = new Date(Date.now() + 9*60*60*1000);
+  return kst.toISOString().slice(0,10);
+}
+function kakaoQuotaStorageKey(idx){ return `frp_kakao_quota_${idx}`; }
+function loadKakaoQuota(idx){
+  let q = {};
+  try{ q = JSON.parse(localStorage.getItem(kakaoQuotaStorageKey(idx))||'{}'); }catch(e){ q = {}; }
+  if(q.date !== todayKeyKST()) q = {date: todayKeyKST(), count: 0};
+  return q;
+}
+function bumpKakaoQuota(idx){
+  const q = loadKakaoQuota(idx);
+  q.count = (q.count||0) + 1;
+  try{ localStorage.setItem(kakaoQuotaStorageKey(idx), JSON.stringify(q)); }catch(e){ /* non-fatal */ }
+  return q;
+}
+
+// 카카오맵 SDK는 <script src="...appkey=X"> 태그에 키가 박혀 있어서, 키를 바꾸려면
+// 기존 스크립트를 지우고 새로 로드해야 함 (src만 바꾸는 건 브라우저마다 동작이 달라
+// 신뢰할 수 없음). window.kakao도 함께 정리해서 이전 키의 상태가 섞이지 않게 함.
+function loadKakaoSdkScript(appKey){
+  return new Promise((resolve, reject)=>{
+    document.querySelectorAll('script[data-kakao-sdk]').forEach(s=>s.remove());
+    try{ delete window.kakao; }catch(e){ window.kakao = undefined; }
+
+    // 카카오맵 SDK는 libraries=services 옵션을 쓸 때 내부적으로 document.write()를
+    // 호출해서 Geocoder/Places 라이브러리 파일을 추가로 끼워 넣는다. 이 프로젝트는
+    // 페이지 로드가 다 끝난 뒤(사용자가 버튼을 눌렀을 때) SDK를 동적으로 삽입하는
+    // 구조인데, 브라우저는 "문서 로딩이 이미 끝난 뒤 실행되는 외부 스크립트"가
+    // document.write()를 호출하면 async 값과 무관하게 예외를 던진다
+    // ("...asynchronously-loaded external script..." 에러가 이것).
+    // -> SDK가 실행되는 짧은 구간 동안만 document.write를 가로채서, 문서를 지우는
+    // 대신 <head>에 <script> 태그를 추가하는 동작으로 바꿔치기한다. 삽입된 하위
+    // 스크립트(services 라이브러리 본체)까지 다 로드된 뒤에 resolve한다.
+    const subScriptLoadPromises = [];
+    const originalWrite = document.write;
+    const originalWriteln = document.writeln;
+    function interceptedWrite(html){
+      const tmp = document.createElement('div');
+      tmp.innerHTML = html;
+      Array.from(tmp.childNodes).forEach(node=>{
+        if(node.nodeType !== 1) return;
+        if(node.tagName === 'SCRIPT'){
+          const s = document.createElement('script');
+          Array.from(node.attributes).forEach(a=> s.setAttribute(a.name, a.value));
+          s.dataset.kakaoSdk = '1';
+          if(node.src){
+            subScriptLoadPromises.push(new Promise(res=>{ s.onload = res; s.onerror = res; }));
+          } else {
+            s.textContent = node.textContent;
+          }
+          document.head.appendChild(s);
+        } else {
+          document.head.appendChild(node);
+        }
+      });
+    }
+    document.write = interceptedWrite;
+    document.writeln = interceptedWrite;
+    function restoreWrite(){
+      document.write = originalWrite;
+      document.writeln = originalWriteln;
+    }
+
+    const script = document.createElement('script');
+    script.dataset.kakaoSdk = '1';
+    script.async = false;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&libraries=services`;
+    script.onload = ()=>{
+      Promise.all(subScriptLoadPromises).then(()=>{
+        restoreWrite();
+        resolve();
+      });
+    };
+    script.onerror = ()=>{
+      restoreWrite();
+      reject(new Error('kakao-sdk-load-error'));
+    };
+    document.head.appendChild(script);
+  });
+}
+async function ensureKakaoSdkLoaded(idx){
+  const key = KAKAO_APP_KEYS[idx];
+  if(!isKakaoKeyConfigured(key)) throw new Error('no-key');
+  if(_kakaoSdkLoadedIndex === idx && _kakaoSdkLoadPromise) return _kakaoSdkLoadPromise;
+  _kakaoSdkLoadedIndex = idx;
+  _kakaoSdkLoadPromise = loadKakaoSdkScript(key);
+  return _kakaoSdkLoadPromise;
+}
+
+// Promise wrapper around kakao.maps.services.Geocoder — the callback-style
+// SDK API doesn't support async/await natively.
+function geocoderKakaoRaw(addrText){
+  return new Promise((resolve, reject)=>{
+    if(typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services){
+      reject(new Error('kakao-sdk-not-loaded')); return;
+    }
+    const geocoder = new kakao.maps.services.Geocoder();
+    geocoder.addressSearch(addrText, (result, status)=>{
+      if(status === kakao.maps.services.Status.OK && result && result[0]){
+        resolve({ok:true, lat:parseFloat(result[0].y), lng:parseFloat(result[0].x)});
+      } else if(status === kakao.maps.services.Status.ZERO_RESULT){
+        resolve({error:'no-match'});
+      } else {
+        resolve({error:'kakao-error', status});
+      }
+    });
+  });
+}
+
+function placesKeywordSearchRaw(query){
+  return new Promise((resolve, reject)=>{
+    if(typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services){
+      reject(new Error('kakao-sdk-not-loaded')); return;
+    }
+    const places = new kakao.maps.services.Places();
+    places.keywordSearch(query, (result, status)=>{
+      if(status === kakao.maps.services.Status.OK){
+        resolve({ok:true, list: result.map(r=>({
+          name: r.place_name || r.address_name,
+          addr: r.road_address_name || r.address_name,
+          lat: parseFloat(r.y), lng: parseFloat(r.x)
+        }))});
+      } else if(status === kakao.maps.services.Status.ZERO_RESULT){
+        resolve({ok:true, list:[]});
+      } else {
+        resolve({error:'kakao-error', status});
+      }
+    });
+  });
+}
+
+// ---- juso.go.kr (행정안전부 주소기반산업지원서비스) helpers ----
+// ⚠️ [8번째 세션부터 기본 비활성화] GEOCODE_PROVIDER='kakao'인 동안은 아래 juso 관련
+// 상수/함수가 정의만 되고 실제로 호출되지 않음 (App.geocodeAddress 디스패처가
+// GEOCODE_PROVIDER를 보고 카카오 쪽으로만 라우팅함). juso.go.kr 승인키 발급받으면
+// 위 GEOCODE_PROVIDER를 'juso'로 바꾸기만 하면 됨 — 로직을 다시 짤 필요 없음.
+// (승인 이유: 개인/소규모 신청 시 "이용기관 구분"에서 공공/민간기관만 선택 가능해
+// 심사에 시간이 걸림. 통과 시 juso가 총량 무제한이라 카카오의 "앱 전체 공동
+// 10만/일" 제약보다 유리하므로 승인 나는 대로 전환 예정.)
+// Government address APIs. No daily quota (per published guide + third-party
+// reports), but a short-burst rate limit (roughly 10 req / 5 sec) — pace
+// every call at least this far apart or the calling IP can get blocked.
+// ⚠️ 여기에 business.juso.go.kr에서 발급받은 승인키 2개를 넣으세요.
+// - "도로명주소 검색API" 승인키와 "좌표제공API" 승인키는 서로 다른 신청 항목이라
+//   각각 따로 신청해야 하고, 승인키도 서로 달라요.
+// - 이 키는 특정 URL(도메인)을 등록해서 발급받는 방식이라, 이 앱을 배포할 최종
+//   도메인(예: GitHub Pages 주소)으로 신청해야 해요. 로컬 파일(file://)로 열면
+//   도메인이 없어서 인증에 실패할 수 있어요 — 반드시 고정 도메인에 올려서 쓰세요.
+// - 이 파일을 여는 사람은 누구나 "페이지 소스 보기"로 이 키를 볼 수 있어요. 정부
+//   API는 승인된 도메인에서의 호출만 허용하는 구조라 키 자체가 유출돼도 다른
+//   도메인에서는 쓸 수 없지만, 혹시 오남용이 걱정되면 승인키 관리 페이지에서
+//   언제든 재발급/폐기할 수 있어요.
+const JUSO_SEARCH_KEY = 'YOUR_JUSO_SEARCH_API_KEY';   // 도로명주소 검색API 승인키
+const JUSO_COORD_KEY  = 'YOUR_JUSO_COORD_API_KEY';    // 좌표제공API 승인키
+
+const JUSO_PACE_MS = 550;
+function delay(ms){ return new Promise(r=>setTimeout(r, ms)); }
+
+// GRS80 TM / EPSG:5179 ("Korea 2000 / Unified CS", used by juso.go.kr's
+// 좌표제공 API entX/entY output) -> WGS84 lat/lng. Standard inverse
+// Transverse Mercator (Snyder), parameterized per EPSG:5179's definition
+// (lon0=127.5, lat0=38, k0=0.9996, FE=1,000,000, FN=2,000,000).
+function grs80TmToWgs84(x, y){
+  const a = 6378137.0, f = 1/298.257222101, b = a*(1-f);
+  const e2 = (a*a - b*b)/(a*a), ep2 = (a*a - b*b)/(b*b);
+  const k0 = 0.9996, lon0 = 127.5*Math.PI/180, lat0 = 38*Math.PI/180;
+  const FE = 1000000, FN = 2000000;
+  const M0 = a*((1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256)*lat0
+    - (3*e2/8 + 3*e2*e2/32 + 45*e2*e2*e2/1024)*Math.sin(2*lat0)
+    + (15*e2*e2/256 + 45*e2*e2*e2/1024)*Math.sin(4*lat0)
+    - (35*e2*e2*e2/3072)*Math.sin(6*lat0));
+  const xAdj = x - FE, yAdj = y - FN;
+  const M = M0 + yAdj/k0;
+  const mu = M/(a*(1 - e2/4 - 3*e2*e2/64 - 5*e2*e2*e2/256));
+  const e1 = (1-Math.sqrt(1-e2))/(1+Math.sqrt(1-e2));
+  const J1 = 3*e1/2 - 27*e1**3/32, J2 = 21*e1*e1/16 - 55*e1**4/32;
+  const J3 = 151*e1**3/96, J4 = 1097*e1**4/512;
+  const fp = mu + J1*Math.sin(2*mu) + J2*Math.sin(4*mu) + J3*Math.sin(6*mu) + J4*Math.sin(8*mu);
+  const C1 = ep2*Math.cos(fp)**2, T1 = Math.tan(fp)**2;
+  const R1 = a*(1-e2)/Math.pow(1 - e2*Math.sin(fp)**2, 1.5);
+  const N1 = a/Math.sqrt(1 - e2*Math.sin(fp)**2);
+  const D = xAdj/(N1*k0);
+  const lat = fp - (N1*Math.tan(fp)/R1)*(
+      D*D/2
+      - (5+3*T1+10*C1-4*C1*C1-9*ep2)*D**4/24
+      + (61+90*T1+298*C1+45*T1*T1-252*ep2-3*C1*C1)*D**6/720
+    );
+  const lon = lon0 + (
+      D
+      - (1+2*T1+C1)*D**3/6
+      + (5-2*C1+28*T1-3*C1*C1+8*ep2+24*T1*T1)*D**5/120
+    )/Math.cos(fp);
+  return { lat: lat*180/Math.PI, lng: lon*180/Math.PI };
+}
+
+// Minimal JSONP loader (no jQuery in this project). juso.go.kr's Jsonp
+// endpoints (addrLinkApiJsonp.do / addrCoordApiJsonp.do) accept a `callback`
+// query param and wrap the JSON payload in that function call, per their
+// official sample code — this avoids depending on unconfirmed CORS support.
+function jsonp(url, params){
+  return new Promise((resolve, reject)=>{
+    const cbName = 'frp_jsonp_' + Math.random().toString(36).slice(2);
+    const script = document.createElement('script');
+    let timeoutId;
+    function cleanup(){ clearTimeout(timeoutId); delete window[cbName]; script.remove(); }
+    window[cbName] = (data)=>{ cleanup(); resolve(data); };
+    const qs = Object.entries({...params, callback:cbName})
+      .map(([k,v])=>`${encodeURIComponent(k)}=${encodeURIComponent(v===undefined||v===null?'':v)}`).join('&');
+    script.src = `${url}?${qs}`;
+    script.onerror = ()=>{ cleanup(); reject(new Error('jsonp-load-error')); };
+    timeoutId = setTimeout(()=>{ cleanup(); reject(new Error('jsonp-timeout')); }, 8000);
+    document.head.appendChild(script);
+  });
+}
+function jibunLabel(bon,bu){
+  const bonStr = (bon===undefined||bon===null) ? '' : String(bon).trim();
+  if(!bonStr) return '';
+  const buNum = parseInt(String(bu===undefined||bu===null?'':bu).replace(/[^\d]/g,''), 10);
+  return buNum>0 ? `${bonStr}-${buNum}` : bonStr;
+}
+function jibunSortKey(bon,bu){
+  // Handles non-numeric parcel numbers such as forest-land "산44" (leading 산) and stray text/blank cells.
+  const bonStr = String(bon===undefined||bon===null?'':bon).trim();
+  const isSan = /산/.test(bonStr);
+  const bonNum = parseInt(bonStr.replace(/[^\d]/g,''), 10);
+  const buNum = parseInt(String(bu===undefined||bu===null?'':bu).replace(/[^\d]/g,''), 10);
+  const bonSafe = isNaN(bonNum) ? 999999 : bonNum;
+  const buSafe = isNaN(buNum) ? 0 : buNum;
+  // 산(forest) parcels sorted after regular parcels, each internally ascending by 본번-부번.
+  return (isSan?1:0)*100000000 + bonSafe*1000 + buSafe;
+}
+// 13번째 세션: "소재지" 열은 대부분 리(里)/동 단위 주소까지만 담고 있고 실제 지번(본번-부번)은
+// 별도 열(4)(5)에 있음 — 지오코딩 호출·캐시 키에 addr만 쓰면 같은 마을의 모든 필지가 같은
+// 문자열로 조회돼 좌표가 한 점(마을 좌표 근처)에 겹쳐버림. 반드시 이 함수로 지번을 합친 전체
+// 주소를 지오코딩/캐시 키로 써야 필지마다 다른 좌표가 나옴.
+function fullGeocodeAddr(addr, jibun){
+  const a = String(addr||'').trim();
+  return jibun ? `${a} ${jibun}` : a;
+}
+
+// 14번째 세션: 여러 마을을 한 번에 계산·조회하면 지도 위에서 어떤 필지가 어느 마을 소속인지
+// 색으로 구분이 안 돼 헷갈린다는 피드백 반영 — 마을마다 이 팔레트에서 순서대로 색을 배정해
+// 마을 마커·필지 배지에 동일하게 적용함(색이 곧 마을 구분). 12색이면 웬만한 동시 조사 마을
+// 수(보통 2~6개)에서 색이 겹치지 않고, 넘어가면 팔레트를 순환(modulo)해서 재사용함.
+const VILLAGE_COLOR_PALETTE = [
+  '#E4572E','#2E86AB','#F3A712','#4C9A2A','#A23B72','#8E44AD',
+  '#C0392B','#16A085','#D4A017','#5D5D81','#EF6C00','#00838F'
+];
+function villageColorMap(villageOrder){
+  const map = {};
+  villageOrder.forEach((k,i)=>{ map[k] = VILLAGE_COLOR_PALETTE[i % VILLAGE_COLOR_PALETTE.length]; });
+  return map;
+}
+
+const App = {
+  matrix: [],
+  headerRowIdx: 0,
+  headers: [],
+  colMap: {addr:null, bon:null, bu:null, code:null, done:null, extra:{}},
+  parcels: [],
+  villages: {},        // key -> {key,name,sigunguKey,parcels:[],centroid:null,collapsed:true,legalCode:null}
+  villageOrder: [],     // ordered list of village keys (selected, for route screen)
+  currentPos: null,
+  fileName: '',
+  workbook: null,
+  pendingSheet: null,
+  geocodeCache: new Map(),   // in-memory only, address string -> {lat,lng} (this session)
+  villageCoordRef: {},       // persisted village-level lookup: villageKey -> {name,sigunguKey,lat,lng}
+  parcelCoordCache: {},      // in-memory only, this tab/session — cleared on close or reload.
+                              // Not persisted to localStorage on purpose: with up to a few thousand
+                              // parcels this could grow large, and unlike the village-level API
+                              // (quota-conscious, shared team caching via the reference table),
+                              // juso.go.kr's parcel-level API is free with no usage cap, so there's
+                              // no cost to re-fetching after a fresh page load.
+  startPoint: null,          // {lat,lng,label,source} for 출발지 기준 순서 계산
+  _startCandidates: [],
+  routeMode: 'village',      // 'village' (grouped, existing) | 'flat' (single ordered parcel list)
+  flatOrder: [],             // parcel id order, used when routeMode==='flat'
+  _geoCancel: false,
+  manualExtraFields: [],     // site-added-parcel workflow: user-defined extra column labels (act as "headers")
+  manualParcels: [],         // site-added-parcel workflow: [{addr,bon,bu,extra:{label:value}}], not yet built into villages
+
+  init(){
+    const dz = document.getElementById('dropzone');
+    const fi = document.getElementById('fileInput');
+    fi.addEventListener('change', e=>{ if(e.target.files[0]) App.handleFile(e.target.files[0]); });
+    ['dragenter','dragover'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.classList.add('drag');}));
+    ['dragleave','drop'].forEach(ev=>dz.addEventListener(ev, e=>{e.preventDefault();dz.classList.remove('drag');}));
+    dz.addEventListener('drop', e=>{ if(e.dataTransfer.files[0]) App.handleFile(e.dataTransfer.files[0]); });
+    try{ this.villageCoordRef = JSON.parse(localStorage.getItem('frp_village_coord_ref')||'{}'); }catch(e){ this.villageCoordRef = {}; }
+    // parcelCoordCache is intentionally NOT loaded from localStorage — see field comment below.
+    this.renderManualAddCard();
+    this.renderKakaoQuota();
+    subscribeSharedKakaoQuota();
+    // 플로팅 스크롤 버튼 아이콘을 스크롤 위치에 맞춰 실시간으로 갱신(15번째 세션).
+    window.addEventListener('scroll', ()=>this.updateFabScrollIcon(), {passive:true});
+    this.updateFabScrollIcon();
+  },
+
+  handleFile(file){
+    this.fileName = file.name.replace(/\.[^.]+$/,'');
+    const reader = new FileReader();
+    reader.onload = (e)=>{
+      try{
+        const data = new Uint8Array(e.target.result);
+        const wb = XLSX.read(data, {type:'array'});
+        this.workbook = wb;
+        if(wb.SheetNames.length > 1){
+          this.renderSheetPicker(wb.SheetNames);
+        } else {
+          this.loadSheet(wb.SheetNames[0]);
+        }
+      }catch(err){
+        alert('파일을 읽지 못했어요. xlsx/xls/csv 파일인지 확인해주세요.\n('+err.message+')');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  },
+
+  renderSheetPicker(names){
+    // Heuristic: pick the sheet whose first 10 rows look most like a header row containing '소재지'.
+    let bestName = names[0], bestScore = -1;
+    names.forEach(n=>{
+      const ws = this.workbook.Sheets[n];
+      const m = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', blankrows:false});
+      let score = 0;
+      for(let i=0;i<Math.min(10, m.length); i++){
+        (m[i]||[]).forEach(c=>{ if(normHeader(c).includes('소재지')) score += 5; });
+      }
+      score += Math.min(m.length, 1000)/1000;
+      if(score > bestScore){ bestScore = score; bestName = n; }
+    });
+    this.pendingSheet = bestName;
+    const box = document.getElementById('sheetPickerBox');
+    box.innerHTML = `
+      <div class="card">
+        <h3 style="font-size:15px;margin-bottom:4px;">시트가 ${names.length}개예요</h3>
+        <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 10px;">'소재지' 열이 있어 보이는 시트를 자동으로 골랐어요. 다르면 바꿔주세요.</p>
+        <select class="sigungu-select" style="width:100%;" onchange="App.pendingSheet=this.value">
+          ${names.map(n=>`<option value="${n}" ${n===bestName?'selected':''}>${n}</option>`).join('')}
+        </select>
+      </div>
+      <button class="primary-btn" onclick="App.confirmSheet()">이 시트로 계속하기</button>`;
+    this.goScreen('sheetpick');
+  },
+
+  confirmSheet(){ this.loadSheet(this.pendingSheet); },
+
+  loadSheet(name){
+    const ws = this.workbook.Sheets[name];
+    this.matrix = XLSX.utils.sheet_to_json(ws, {header:1, defval:'', blankrows:false});
+    this.detectHeader();
+    this.autoMapColumns();
+    this.renderMappingScreen();
+    this.goScreen('mapping');
+  },
+
+  detectHeader(){
+    let best = {idx:0, score:-1};
+    for(let i=0;i<Math.min(10, this.matrix.length); i++){
+      const row = this.matrix[i];
+      if(!row) continue;
+      let score = 0, hasAddr=false;
+      for(const cell of row){
+        const n = normHeader(cell);
+        if(!n) continue;
+        for(const kw of KEYWORDS){
+          if(n.includes(kw)){ score++; if(kw==='소재지') hasAddr=true; }
+        }
+      }
+      if(hasAddr) score += 5;
+      if(score > best.score) best = {idx:i, score};
+    }
+    this.headerRowIdx = best.idx;
+    this.headers = (this.matrix[best.idx]||[]).map(h=>normHeader(h));
+  },
+
+  autoMapColumns(){
+    const map = {addr:null, bon:null, bu:null, code:null, done:null, extra:{}};
+    this.headers.forEach((h, idx)=>{
+      if(map.addr===null && h.includes('소재지')) map.addr = idx;
+      if(map.bon===null && h.includes('본번')) map.bon = idx;
+      if(map.bu===null && h.includes('부번')) map.bu = idx;
+      if(map.code===null && h.includes('법정동코드')) map.code = idx;
+      // "완료여부"는 이 도구가 내보낸 엑셀을 다시 올렸을 때 완료 상태를 그대로
+      // 이어받기 위한 열 — 17번째 세션 신규. 사용자가 만든 원본 엑셀에는 보통
+      // 없으므로 없어도 문제 없음(그럴 땐 전부 미완료로 시작).
+      if(map.done===null && h.includes('완료여부')) map.done = idx;
+    });
+    this.colMap = map;
+    // 추가 항목(extra)의 기본 체크 상태 — 자주 쓰는 키워드(EXTRA_KEYS)에 해당하는
+    // 열만 우선 켜두고, 그 외 모든 열은 매핑 화면의 체크박스 목록(getExtraCandidates)에서
+    // 사용자가 직접 켜고 끌 수 있게 함. 이전엔 이 EXTRA_KEYS 4개만 인식되고 사용자가
+    // 바꿀 방법이 전혀 없었던 게 "선택한 헤더가 계산화면에 안 나온다" 문제의 원인이었음.
+    this.getExtraCandidates().forEach(c=>{
+      if(EXTRA_KEYS.some(key=>this.headers[c.idx].includes(key))) this.colMap.extra[c.label] = c.idx;
+    });
+  },
+
+  // 소재지/본번/부번/법정동코드/완료여부로 이미 매핑된 열을 뺀 나머지 열 목록을,
+  // 같은 이름이 여러 번 나오는 경우(예: "시설물"이 4개 열) 뒤에 (2),(3)...을 붙여
+  // 구분해서 반환함. 매핑 화면의 체크박스 목록과 자동매핑 기본값 계산 양쪽에서
+  // 이 함수 하나만 기준으로 삼아서 번호가 서로 어긋나지 않게 함.
+  getExtraCandidates(){
+    const used = new Set([this.colMap.addr, this.colMap.bon, this.colMap.bu, this.colMap.code, this.colMap.done]
+      .filter(v=>v!==null && v!=='manual'));
+    const seen = {};
+    const list = [];
+    this.headers.forEach((h, idx)=>{
+      if(used.has(idx) || !h) return;
+      seen[h] = (seen[h]||0) + 1;
+      const label = seen[h]===1 ? h : `${h} (${seen[h]})`;
+      list.push({idx, label});
+    });
+    return list;
+  },
+
+  renderMappingScreen(){
+    const box = document.getElementById('mappingFields');
+    const sampleRow = this.matrix[this.headerRowIdx+1] || [];
+    const options = this.headers.map((h,idx)=>`<option value="${idx}">${h||'(빈 열 '+idx+')'}</option>`).join('');
+    const rowHtml = (label, key, required) => {
+      const val = this.colMap[key];
+      return `<div class="field-row">
+        <div>
+          <div class="label">${label}${required?'':' <span style="font-weight:400;color:var(--text-mute);">(선택)</span>'}</div>
+          <div class="sample">예시: ${val!==null && sampleRow[val]!==undefined ? String(sampleRow[val]).slice(0,20) : '-'}</div>
+        </div>
+        <select class="colselect" onchange="App.colMap.${key}=this.value===''?null:parseInt(this.value);App.renderMappingScreen();">
+          <option value="">사용 안 함</option>
+          ${options}
+        </select>
+      </div>`;
+    };
+    let html = rowHtml('소재지 (주소)', 'addr', true) + rowHtml('본번', 'bon', false) + rowHtml('부번', 'bu', false) + rowHtml('법정동코드', 'code', false) + rowHtml('완료여부', 'done', false);
+    box.innerHTML = html;
+    // set selected values after render
+    const sel = box.querySelectorAll('select');
+    const keys = ['addr','bon','bu','code','done'];
+    sel.forEach((s,i)=>{ if(this.colMap[keys[i]]!==null) s.value = this.colMap[keys[i]]; });
+    document.getElementById('mappingConfirmBtn').disabled = (this.colMap.addr===null);
+
+    // 코어 필드(소재지/본번/부번/법정동코드/완료여부)로 새로 매핑된 열은 추가 항목
+    // 목록에서 자동으로 빠짐(같은 열이 두 군데 중복으로 쓰이지 않도록).
+    const coreIdx = new Set([this.colMap.addr, this.colMap.bon, this.colMap.bu, this.colMap.code, this.colMap.done].filter(v=>v!==null));
+    Object.keys(this.colMap.extra).forEach(k=>{ if(coreIdx.has(this.colMap.extra[k])) delete this.colMap.extra[k]; });
+
+    this.renderExtraColumnPicker();
+  },
+
+  renderExtraColumnPicker(){
+    const box = document.getElementById('mappingExtraFields');
+    if(!box) return;
+    const candidates = this.getExtraCandidates();
+    if(candidates.length===0){
+      box.innerHTML = '<p class="hint">추가로 고를 수 있는 열이 없어요.</p>';
+      return;
+    }
+    const checkedIdx = new Set(Object.values(this.colMap.extra));
+    box.innerHTML = `
+      <div class="extra-actions">
+        <button type="button" onclick="App.setAllExtraCols(true)">전체 선택</button>
+        <button type="button" onclick="App.setAllExtraCols(false)">전체 해제</button>
+      </div>
+      <div class="extra-col-list">
+        ${candidates.map(c=>`
+          <label class="extra-col-row">
+            <input type="checkbox" onchange="App.toggleExtraCol(${c.idx}, this.checked)" ${checkedIdx.has(c.idx)?'checked':''}>
+            <span>${c.label}</span>
+          </label>`).join('')}
+      </div>`;
+  },
+
+  toggleExtraCol(idx, checked){
+    if(checked){
+      const c = this.getExtraCandidates().find(c=>c.idx===idx);
+      if(c) this.colMap.extra[c.label] = idx;
+    } else {
+      Object.keys(this.colMap.extra).forEach(k=>{ if(this.colMap.extra[k]===idx) delete this.colMap.extra[k]; });
+    }
+  },
+
+  setAllExtraCols(on){
+    if(on){ this.getExtraCandidates().forEach(c=>{ this.colMap.extra[c.label] = c.idx; }); }
+    else { this.colMap.extra = {}; }
+    this.renderExtraColumnPicker();
+  },
+
+  confirmMapping(){
+    if(this.colMap.addr===null){ alert('소재지(주소) 열을 선택해주세요.'); return; }
+    this.buildParcels();
+    this.renderVillageList();
+    this.goScreen('select');
+  },
+
+  buildParcels(){
+    const {addr, bon, bu, code, done, extra} = this.colMap;
+    const parcels = [];
+    const villages = {};
+    for(let i=this.headerRowIdx+1; i<this.matrix.length; i++){
+      const row = this.matrix[i];
+      if(!row) continue;
+      const addrVal = row[addr];
+      if(!addrVal || String(addrVal).trim()==='') continue;
+      if(normHeader(addrVal).includes('소재지')) continue; // stray header row
+      const parsed = parseAddress(addrVal);
+      const bonVal = bon!==null ? row[bon] : '';
+      const buVal = bu!==null ? row[bu] : '';
+      const codeVal = code!==null ? row[code] : '';
+      const extraData = {};
+      Object.keys(extra).forEach(k=>{ extraData[k] = row[extra[k]]; });
+      const addrTrim = String(addrVal).trim();
+      const jibunVal = jibunLabel(bonVal, buVal);
+      // 캐시 키는 반드시 지번까지 합친 전체 주소여야 함(위 fullGeocodeAddr 주석 참고) —
+      // addrTrim만 쓰면 같은 리의 다른 필지가 서로의 캐시된 좌표를 가로채 감.
+      const cachedCoord = this.parcelCoordCache[fullGeocodeAddr(addrTrim, jibunVal)];
+      // 완료여부 열이 매핑돼 있으면(예: 이 도구가 예전에 내보낸 엑셀을 다시 올린 경우)
+      // 그 값으로 완료 상태를 이어받음 — 17번째 세션 신규. "미완료"에 "완료"가 부분
+      // 문자열로 포함돼 있어서 includes만으로는 오판하므로 미완료를 먼저 배제함.
+      const doneRaw = done!==null && done!==undefined ? String(row[done]||'').trim() : '';
+      const doneVal = doneRaw ? (doneRaw.includes('완료') && !doneRaw.includes('미완료')) : false;
+      const p = {
+        id: parcels.length,
+        addr: addrTrim,
+        bon: bonVal, bu: buVal, code: codeVal,
+        jibun: jibunVal,
+        sortKey: jibunSortKey(bonVal, buVal),
+        villageKey: parsed.villageKey,
+        villageName: parsed.villageName,
+        sigunguKey: parsed.sigunguKey,
+        extra: extraData,
+        coord: cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source:'cache'} : null,
+        done: doneVal
+      };
+      parcels.push(p);
+      if(!villages[p.villageKey]){
+        const ref = this.villageCoordRef[p.villageKey];
+        villages[p.villageKey] = {
+          key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
+          centroid: ref ? {lat:ref.lat, lng:ref.lng, source:'ref'} : null,
+          collapsed:true, selected:false,
+          legalCode: codeVal ? String(codeVal) : null
+        };
+      } else if(!villages[p.villageKey].legalCode && codeVal){
+        villages[p.villageKey].legalCode = String(codeVal);
+      }
+      villages[p.villageKey].parcels.push(p);
+    }
+    Object.values(villages).forEach(v=> v.parcels.sort((a,b)=>a.sortKey-b.sortKey) );
+    this.parcels = parcels;
+    this.villages = villages;
+  },
+
+  // ---------- MANUAL PARCEL ADD (upload screen, no excel needed) ----------
+  // Lets the user type in a handful of parcels directly instead of building an
+  // excel file for a small ad-hoc survey. "추가 항목" labels stand in for the
+  // excel header row: they become both the input field labels here and the
+  // exported column headers later, since there's no uploaded header row to
+  // detect them from.
+  // ---------- MANUAL PARCEL ADD (upload screen, no excel needed) ----------
+  // Lets the user type in a handful of parcels directly instead of building an
+  // excel file for a small ad-hoc survey. The "열 추가" (add column) control
+  // defines column NAMES only (like an excel header row) — separate from the
+  // per-parcel VALUE inputs that appear once a column exists, to avoid the
+  // two being confused for each other.
+  renderManualAddCard(){
+    const form = document.getElementById('manualParcelForm');
+    let html = `
+      <label class="fieldlabel" style="margin-top:14px;">소재지 (주소) <span style="font-weight:400;color:var(--text-mute);">(필수)</span></label>
+      <input type="text" id="manualAddrInput" placeholder="예: 전북특별자치도 OO시 OO읍 OO리 123">
+      <div class="two-col">
+        <div>
+          <label class="fieldlabel">본번 <span style="font-weight:400;color:var(--text-mute);">(선택)</span></label>
+          <input type="text" id="manualBonInput" placeholder="예: 123">
+        </div>
+        <div>
+          <label class="fieldlabel">부번 <span style="font-weight:400;color:var(--text-mute);">(선택)</span></label>
+          <input type="text" id="manualBuInput" placeholder="예: 4">
+        </div>
+      </div>
+
+      <div class="manual-addcol">
+        <label class="fieldlabel" style="margin-top:0;">열 추가 <span style="font-weight:400;color:var(--text-mute);">(선택 — 소유자명, 메모 등 같이 기록할 항목의 이름)</span></label>
+        <div class="searchbar" style="margin-bottom:2px;">
+          <input type="text" id="manualExtraLabelInput" placeholder="새 열 이름 입력 후 추가" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addManualExtraField();}">
+          <button onclick="App.addManualExtraField()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">추가</button>
+        </div>
+        ${this.manualExtraFields.length===0 ? '' :
+          `<div class="manual-chip-row">` + this.manualExtraFields.map((f,i)=>
+            `<span class="manual-chip">${f}<button type="button" onclick="App.removeManualExtraField(${i})">×</button></span>`
+          ).join('') + `</div>`}
+      </div>`;
+    this.manualExtraFields.forEach((f,i)=>{
+      html += `<label class="fieldlabel">${f}</label><input type="text" id="manualExtraInput_${i}" placeholder="${f} 값 입력">`;
+    });
+    form.innerHTML = html;
+
+    const listWrap = document.getElementById('manualParcelListWrap');
+    if(this.manualParcels.length===0){
+      listWrap.innerHTML = '';
+    } else {
+      listWrap.innerHTML = `<div class="manual-count"><b>${this.manualParcels.length}개</b> 필지가 추가됐어요</div>
+        <div class="manual-parcel-list">` +
+        this.manualParcels.map((m,i)=>{
+          const jibun = jibunLabel(m.bon, m.bu);
+          const extraVals = Object.entries(m.extra||{}).filter(([,v])=>v).map(([k,v])=>`${k}: ${v}`).join(' · ');
+          return `<div class="manual-parcel-row">
+            <div class="mp-info">
+              <div class="mp-addr">${m.addr}</div>
+              ${jibun ? `<div class="mp-jibun">${jibun}</div>` : ''}
+              ${extraVals ? `<div class="mp-extra">${extraVals}</div>` : ''}
+            </div>
+            <button type="button" onclick="App.removeManualParcel(${i})">삭제</button>
+          </div>`;
+        }).join('') + `</div>`;
+    }
+    const startBtn = document.getElementById('manualStartBtn');
+    startBtn.classList.toggle('hidden', this.manualParcels.length===0);
+    if(this.manualParcels.length>0) startBtn.textContent = `추가한 필지 ${this.manualParcels.length}개로 시작하기`;
+  },
+
+  addManualExtraField(){
+    const input = document.getElementById('manualExtraLabelInput');
+    const label = input.value.trim();
+    if(!label) return;
+    if(this.manualExtraFields.includes(label)){ alert('이미 추가된 항목이에요.'); return; }
+    this.manualExtraFields.push(label);
+    input.value = '';
+    this.renderManualAddCard();
+  },
+  removeManualExtraField(idx){
+    this.manualExtraFields.splice(idx, 1);
+    this.renderManualAddCard();
+  },
+  addManualParcel(){
+    const addrInput = document.getElementById('manualAddrInput');
+    const addr = addrInput.value.trim();
+    if(!addr){ alert('소재지(주소)를 입력해주세요.'); return; }
+    const bon = document.getElementById('manualBonInput').value.trim();
+    const bu = document.getElementById('manualBuInput').value.trim();
+    const extra = {};
+    this.manualExtraFields.forEach((f,i)=>{
+      const el = document.getElementById(`manualExtraInput_${i}`);
+      extra[f] = el ? el.value.trim() : '';
+    });
+    this.manualParcels.push({addr, bon, bu, extra});
+    this.renderManualAddCard();
+    document.getElementById('manualAddrInput').focus();
+  },
+  removeManualParcel(idx){
+    this.manualParcels.splice(idx, 1);
+    this.renderManualAddCard();
+  },
+  buildParcelsFromManual(){
+    const parcels = [];
+    const villages = {};
+    this.manualParcels.forEach((m, i)=>{
+      const parsed = parseAddress(m.addr);
+      const jibunVal = jibunLabel(m.bon, m.bu);
+      const cachedCoord = this.parcelCoordCache[fullGeocodeAddr(m.addr, jibunVal)];
+      const p = {
+        id: i,
+        addr: m.addr,
+        bon: m.bon, bu: m.bu, code: '',
+        jibun: jibunVal,
+        sortKey: jibunSortKey(m.bon, m.bu),
+        villageKey: parsed.villageKey,
+        villageName: parsed.villageName,
+        sigunguKey: parsed.sigunguKey,
+        extra: {...m.extra},
+        coord: cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source:'cache'} : null,
+        done: false
+      };
+      parcels.push(p);
+      if(!villages[p.villageKey]){
+        const ref = this.villageCoordRef[p.villageKey];
+        villages[p.villageKey] = {
+          key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
+          centroid: ref ? {lat:ref.lat, lng:ref.lng, source:'ref'} : null,
+          collapsed:true, selected:false, legalCode:null
+        };
+      }
+      villages[p.villageKey].parcels.push(p);
+    });
+    Object.values(villages).forEach(v=> v.parcels.sort((a,b)=>a.sortKey-b.sortKey) );
+    this.parcels = parcels;
+    this.villages = villages;
+    const extraKeys = {};
+    this.manualExtraFields.forEach(f=>{ extraKeys[f] = true; });
+    this.colMap = {addr:'manual', bon:'manual', bu:'manual', code:null, done:null, extra:extraKeys};
+  },
+  startFromManual(){
+    if(this.manualParcels.length===0){ alert('추가된 필지가 없어요.'); return; }
+    this.buildParcelsFromManual();
+    this.renderVillageList();
+    this.goScreen('select');
+  },
+
+  goScreen(name){
+    ['upload','sheetpick','mapping','select','route','map'].forEach(s=>{
+      document.getElementById('screen-'+s).classList.toggle('hidden', s!==name);
+    });
+    const badges = {upload:'업로드', sheetpick:'시트 선택', mapping:'컬럼 확인', select:'마을 선택', route:'동선', map:'지도'};
+    document.getElementById('stepBadge').textContent = badges[name];
+    this._currentScreen = name;
+    const hasSticky = (name==='route');
+    document.getElementById('stickyBottom').style.display = hasSticky ? 'flex' : 'none';
+    // 화면전환/스크롤 플로팅 버튼은 두 화면(route, map)에서만 보임(15번째 세션 — 예전
+    // 상단 세그먼트 스위치를 우측 하단 동그란 버튼으로 교체). route 화면엔 sticky-bottom
+    // (엑셀로 내보내기) 바가 있어서 그 위로 띄우고, map 화면엔 더 아래로 내림.
+    const fab = document.getElementById('fabStack');
+    fab.classList.toggle('hidden', name!=='route' && name!=='map');
+    fab.classList.toggle('with-sticky', hasSticky);
+    const screenBtn = document.getElementById('fabScreenBtn');
+    if(screenBtn){
+      // 현재 화면의 "반대쪽" 화면으로 가는 아이콘을 보여줌 — route면 지도로 갈 수 있는
+      // 🗺️, map이면 계산 화면으로 돌아갈 수 있는 📋.
+      screenBtn.textContent = (name==='map') ? '📋' : '🗺️';
+      screenBtn.title = (name==='map') ? '계산 화면으로' : '지도 화면으로';
+    }
+    if(name!=='map') this.stopMapGps(); // 지도 화면을 벗어나면 GPS 추적도 같이 끔 (배터리 절약)
+    if(GEOCODE_PROVIDER==='kakao') this.renderKakaoQuota();
+  },
+
+  // route ↔ map 화면을 오가는 플로팅 버튼 1개짜리 토글 (15번째 세션, 세그먼트 스위치 대체).
+  toggleScreenSwitch(){
+    if(this._currentScreen==='map') this.goScreen('route');
+    else this.openMapScreen();
+  },
+
+  // 우측 하단 플로팅 스크롤 버튼 — 현재 스크롤 위치에 따라 ▲(맨 위로)/▼(맨 아래로)로
+  // 아이콘이 동적으로 바뀌고, 클릭하면 그 방향으로 부드럽게 스크롤함(15번째 세션).
+  updateFabScrollIcon(){
+    const btn = document.getElementById('fabScrollBtn');
+    if(!btn) return;
+    const scrolledDown = window.scrollY > 150;
+    btn.textContent = scrolledDown ? '▲' : '▼';
+    btn.dataset.dir = scrolledDown ? 'up' : 'down';
+  },
+  handleFabScroll(){
+    const btn = document.getElementById('fabScrollBtn');
+    const dir = btn ? btn.dataset.dir : 'down';
+    if(dir==='up') window.scrollTo({top:0, behavior:'smooth'});
+    else window.scrollTo({top:document.body.scrollHeight, behavior:'smooth'});
+  },
+
+  // ---------- SELECT SCREEN ----------
+  renderVillageList(){
+    const total = this.parcels.length;
+    const villageArr = Object.values(this.villages);
+    document.getElementById('selStatTotal').textContent = total.toLocaleString();
+    document.getElementById('selStatVillages').textContent = villageArr.length.toLocaleString();
+
+    // sigungu filter options
+    const sigunguSet = Array.from(new Set(villageArr.map(v=>v.sigunguKey))).sort();
+    const sigunguSelect = document.getElementById('sigunguFilter');
+    if(sigunguSelect.options.length===0 || sigunguSelect.dataset.built!=='1'){
+      sigunguSelect.innerHTML = '<option value="__ALL__">전체 시군구 (' + sigunguSet.length + ')</option>' +
+        sigunguSet.map(s=>`<option value="${s}">${s}</option>`).join('');
+      sigunguSelect.dataset.built = '1';
+    }
+    const sigunguFilter = sigunguSelect.value || '__ALL__';
+    const search = (document.getElementById('villageSearch').value||'').trim().toLowerCase();
+
+    let filtered = villageArr.filter(v=>{
+      if(sigunguFilter!=='__ALL__' && v.sigunguKey!==sigunguFilter) return false;
+      if(search && !(v.name.toLowerCase().includes(search) || v.sigunguKey.toLowerCase().includes(search))) return false;
+      return true;
+    });
+    filtered.sort((a,b)=> a.sigunguKey===b.sigunguKey ? a.name.localeCompare(b.name,'ko') : a.sigunguKey.localeCompare(b.sigunguKey,'ko'));
+
+    const list = document.getElementById('villageList');
+    if(filtered.length===0){
+      list.innerHTML = '<div class="empty-note">조건에 맞는 마을이 없어요.</div>';
+    } else {
+      list.innerHTML = filtered.map(v=>`
+        <label class="village-item">
+          <input type="checkbox" ${v.selected?'checked':''} onchange="App.toggleVillage('${v.key}', this.checked)">
+          <div>
+            <div class="name">${v.name}</div>
+            <div class="sub">${v.sigunguKey}</div>
+          </div>
+          <div class="count">${v.parcels.length}필지</div>
+        </label>
+      `).join('');
+    }
+    const checkedCount = villageArr.filter(v=>v.selected).reduce((s,v)=>s+v.parcels.length,0);
+    document.getElementById('selStatChecked').textContent = checkedCount.toLocaleString();
+    this.filteredVillageKeys = filtered.map(v=>v.key);
+    this.ensureGoRouteButton();
+  },
+
+  ensureGoRouteButton(){
+    let btn = document.getElementById('goRouteBtn');
+    const anySelected = Object.values(this.villages).some(v=>v.selected);
+    if(!btn){
+      btn = document.createElement('button');
+      btn.id = 'goRouteBtn';
+      btn.className = 'primary-btn';
+      btn.style.marginTop = '14px';
+      btn.onclick = ()=>App.buildRoute();
+      document.getElementById('screen-select').appendChild(btn);
+    }
+    btn.disabled = !anySelected;
+    const n = Object.values(this.villages).filter(v=>v.selected).reduce((s,v)=>s+v.parcels.length,0);
+    btn.textContent = anySelected ? `선택한 마을로 동선 만들기 (${n}필지)` : '마을을 먼저 선택하세요';
+  },
+
+  toggleVillage(key, checked){
+    this.villages[key].selected = checked;
+    this.renderVillageList();
+  },
+  selectAllVisible(val){
+    (this.filteredVillageKeys||[]).forEach(k=> this.villages[k].selected = val);
+    this.renderVillageList();
+  },
+
+  // ---------- ROUTE SCREEN ----------
+  buildRoute(){
+    this.villageOrder = Object.values(this.villages).filter(v=>v.selected)
+      .sort((a,b)=> a.sigunguKey===b.sigunguKey ? a.name.localeCompare(b.name,'ko') : a.sigunguKey.localeCompare(b.sigunguKey,'ko'))
+      .map(v=>v.key);
+    this.routeMode = 'village';
+    this.flatOrder = [];
+    this.goScreen('route');
+    this.renderRoute();
+    this.updateSuggestBtn();
+  },
+
+  setRouteMode(mode){ this.routeMode = mode; this.renderRoute(); },
+
+  // 마을별 보기 ↔ 계산된 순서 보기를 오가는 슬라이딩 스위치 — 필지/출발지 기준 순서를
+  // 한 번이라도 계산해뒀을 때만(flatOrder 有) 보여줌. 두 버튼의 문구를 "마을별 보기"/
+  // "계산된 순서"로 통일해서 어느 모드에서 봐도 같은 이름이 보이도록 함(15번째 세션 —
+  // "두 버튼 텍스트를 일관성 있게, 좌우로 이동하는 스위치로 만들어달라" 요청 반영).
+  viewSwitchHtml(){
+    if(!(this.flatOrder && this.flatOrder.length>0)) return '';
+    const isFlat = this.routeMode==='flat';
+    return `
+      <div class="view-switch">
+        <div class="vsw-highlight ${isFlat?'pos-flat':''}"></div>
+        <button class="${!isFlat?'active':''}" onclick="App.setRouteMode('village')">마을별 보기</button>
+        <button class="${isFlat?'active':''}" onclick="App.setRouteMode('flat')">계산된 순서</button>
+      </div>`;
+  },
+
+  totalStats(){
+    let total=0, done=0;
+    this.villageOrder.forEach(k=>{
+      this.villages[k].parcels.forEach(p=>{ total++; if(p.done) done++; });
+    });
+    return {total, done};
+  },
+
+  flatParcelList(){
+    return this.flatOrder.map(id=>this.parcels.find(p=>p.id===id)).filter(Boolean);
+  },
+
+  findNextParcel(){
+    if(this.routeMode==='flat'){
+      for(const p of this.flatParcelList()){ if(!p.done) return {village:{name:p.villageName}, parcel:p}; }
+      return null;
+    }
+    for(const k of this.villageOrder){
+      const v = this.villages[k];
+      for(const p of v.parcels){ if(!p.done) return {village:v, parcel:p}; }
+    }
+    return null;
+  },
+
+  renderRoute(){
+    const {total, done} = this.totalStats();
+    document.getElementById('bottomProgress').textContent = `${done}/${total} 완료`;
+
+    const nextCard = document.getElementById('nextCard');
+    const next = this.findNextParcel();
+    if(next){
+      nextCard.innerHTML = `
+        <div class="eyebrow">다음 조사지 · ${next.village.name}</div>
+        <div class="addr">${next.parcel.addr}</div>
+        <div class="jibun">${next.parcel.jibun ? '지번 '+next.parcel.jibun : ''}</div>`;
+    } else {
+      nextCard.innerHTML = `<div class="eyebrow">진행상황</div><div class="done-all">✓ 선택한 필지를 모두 조사했어요</div>`;
+    }
+
+    const list = document.getElementById('routeList');
+
+    if(this.routeMode==='flat'){
+      const ordered = this.flatParcelList();
+      const coordTag = (p)=> !p.coord ? ' · 좌표없음' :
+        (p.coord.source==='juso-api' ? ' · 좌표(정부API)' : p.coord.source==='cache' ? ' · 좌표(캐시)' : ' · 좌표(수동)');
+      list.innerHTML = this.viewSwitchHtml() +
+        `<div class="village-group"><div class="parcel-list" style="border-top:none;">` +
+        ordered.map((p,i)=>`
+          <div class="parcel-row ${p.done?'done':''}">
+            <div class="pnum">${i+1}</div>
+            <div class="pinfo">
+              <div class="addr">${p.addr}</div>
+              <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${coordTag(p)} · ${p.villageName}${this.extraLine(p)}</div>
+            </div>
+            <div class="pmove">
+              <button onclick="App.moveFlatParcel(${i}, -1)" ${i===0?'disabled':''}>▲</button>
+              <button onclick="App.moveFlatParcel(${i}, 1)" ${i===ordered.length-1?'disabled':''}>▼</button>
+            </div>
+            <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
+          </div>
+        `).join('') + `</div></div>`;
+      return;
+    }
+
+    list.innerHTML = this.viewSwitchHtml() + this.villageOrder.map((key, i)=>{
+      const v = this.villages[key];
+      const vDone = v.parcels.filter(p=>p.done).length;
+      const hasCentroid = !!v.centroid;
+      const centroidTag = !v.centroid ? '' :
+        (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : ' · 좌표(GPS)');
+      const parcelsHtml = v.collapsed ? '' : `<div class="parcel-list">${
+        v.parcels.map((p, pi)=>`
+          <div class="parcel-row ${p.done?'done':''}">
+            <div class="pnum">${pi+1}</div>
+            <div class="pinfo">
+              <div class="addr">${p.addr}</div>
+              <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${this.extraLine(p)}</div>
+            </div>
+            <div class="pmove">
+              <button onclick="App.moveParcel('${key}', ${pi}, -1)" ${pi===0?'disabled':''}>▲</button>
+              <button onclick="App.moveParcel('${key}', ${pi}, 1)" ${pi===v.parcels.length-1?'disabled':''}>▼</button>
+            </div>
+            <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
+          </div>
+        `).join('')
+      }</div>`;
+
+      return `
+        <div class="village-group">
+          <div class="vg-head">
+            <div class="order-badge">${i+1}</div>
+            <div class="info" onclick="App.toggleCollapse('${key}')">
+              <div class="name">${v.name} <span style="color:var(--text-mute);font-weight:400;">· ${v.sigunguKey}</span></div>
+              <div class="prog">${vDone}/${v.parcels.length} 완료${centroidTag}</div>
+            </div>
+            <button class="locbtn ${hasCentroid?'set':''}" title="이 마을 좌표 저장" onclick="App.saveVillageCentroid('${key}')">📍</button>
+            <div class="movebtns">
+              <button onclick="App.moveVillage(${i}, -1)" ${i===0?'disabled':''}>▲</button>
+              <button onclick="App.moveVillage(${i}, 1)" ${i===this.villageOrder.length-1?'disabled':''}>▼</button>
+            </div>
+            <button class="chevron" onclick="App.toggleCollapse('${key}')" title="${v.collapsed?'펼치기':'접기'}">${v.collapsed?'▾':'▴'}</button>
+          </div>
+          ${parcelsHtml}
+        </div>`;
+    }).join('');
+  },
+
+  extraLine(p){
+    const parts = Object.keys(p.extra).filter(k=>p.extra[k]!==''&&p.extra[k]!==undefined).map(k=>`${k} ${p.extra[k]}`);
+    return parts.length ? ` · ${parts.join(' · ')}` : '';
+  },
+
+  toggleCollapse(key){ this.villages[key].collapsed = !this.villages[key].collapsed; this.renderRoute(); },
+  toggleDone(parcelId, val){
+    const p = this.parcels.find(p=>p.id===parcelId);
+    if(p) p.done = val;
+    this.renderRoute();
+  },
+  moveVillage(idx, dir){
+    const newIdx = idx+dir;
+    if(newIdx<0 || newIdx>=this.villageOrder.length) return;
+    [this.villageOrder[idx], this.villageOrder[newIdx]] = [this.villageOrder[newIdx], this.villageOrder[idx]];
+    this.renderRoute();
+  },
+  moveParcel(villageKey, idx, dir){
+    const arr = this.villages[villageKey].parcels;
+    const newIdx = idx+dir;
+    if(newIdx<0 || newIdx>=arr.length) return;
+    [arr[idx], arr[newIdx]] = [arr[newIdx], arr[idx]];
+    this.renderRoute();
+  },
+  moveFlatParcel(idx, dir){
+    const newIdx = idx+dir;
+    if(newIdx<0 || newIdx>=this.flatOrder.length) return;
+    [this.flatOrder[idx], this.flatOrder[newIdx]] = [this.flatOrder[newIdx], this.flatOrder[idx]];
+    this.renderRoute();
+  },
+
+  // ---------- GPS ----------
+  getCurrentPosition(){
+    const btn = document.getElementById('gpsBtn');
+    const status = document.getElementById('gpsStatus');
+    if(!navigator.geolocation){ status.textContent = '이 브라우저는 위치 확인을 지원하지 않아요'; return; }
+    status.textContent = '위치 확인 중...';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      this.currentPos = {lat:pos.coords.latitude, lng:pos.coords.longitude};
+      btn.classList.add('active');
+      status.textContent = `현재 위치 확인됨 (${this.currentPos.lat.toFixed(5)}, ${this.currentPos.lng.toFixed(5)})`;
+      this.updateSuggestBtn();
+    }, err=>{
+      status.textContent = '위치를 가져오지 못했어요. 브라우저 위치 권한을 확인해주세요.';
+    }, {enableHighAccuracy:true, timeout:10000});
+  },
+
+  saveVillageCentroid(key){
+    if(!navigator.geolocation){ alert('이 브라우저는 위치 확인을 지원하지 않아요'); return; }
+    const v = this.villages[key];
+    navigator.geolocation.getCurrentPosition(pos=>{
+      v.centroid = {lat:pos.coords.latitude, lng:pos.coords.longitude, source:'gps'};
+      this.rememberVillageCoord(v);
+      this.renderRoute();
+      this.updateSuggestBtn();
+    }, err=>{ alert('위치를 가져오지 못했어요.'); }, {enableHighAccuracy:true, timeout:10000});
+  },
+
+  updateSuggestBtn(){
+    const btn = document.getElementById('suggestBtn');
+    if(!btn) return;
+    const withCentroid = this.villageOrder.filter(k=>this.villages[k].centroid).length;
+    btn.disabled = !(withCentroid>=2);
+  },
+
+  // Nearest-neighbor chain over village centroids. Uses live GPS as the starting
+  // point when available; otherwise starts from the first village (in current
+  // order) that already has a centroid, so this works from the office too —
+  // no live GPS fix required, as long as village coordinates exist.
+  suggestOrder(){
+    let remaining = [...this.villageOrder];
+    const withCentroid = remaining.filter(k=>this.villages[k].centroid);
+    const withoutCentroid = remaining.filter(k=>!this.villages[k].centroid);
+    if(withCentroid.length < 2){ alert('좌표가 있는 마을이 2개 이상이어야 순서를 추천할 수 있어요.'); return; }
+    let pool = [...withCentroid];
+    let cur = this.currentPos;
+    if(!cur){ cur = this.villages[pool[0]].centroid; }
+    const ordered = [];
+    while(pool.length){
+      let bestIdx=0, bestDist=Infinity;
+      pool.forEach((k,i)=>{
+        const c = this.villages[k].centroid;
+        const d = haversine(cur.lat, cur.lng, c.lat, c.lng);
+        if(d<bestDist){ bestDist=d; bestIdx=i; }
+      });
+      const chosen = pool.splice(bestIdx,1)[0];
+      ordered.push(chosen);
+      cur = this.villages[chosen].centroid;
+    }
+    this.villageOrder = [...ordered, ...withoutCentroid];
+    this.renderRoute();
+  },
+
+  // ---------- 지도 보기 화면 ----------
+  // 마커 찍기·내 위치 표시는 순수 화면 표시라 카카오 API를 추가로 호출하지 않음.
+  // 지도 자체를 띄우는 것(kakao.maps.Map)도 지오코딩(Geocoder/Places)과는 별개의
+  // 무료 지도 표시 기능이라 쿼터 카운터를 건드리지 않음 — bumpKakaoQuota는
+  // geocodeAddressKakao 안에서만 호출됨(주소→좌표 변환할 때 1번).
+  openMapScreen(){
+    this.goScreen('map');
+    // 필지 순서가 계산돼 있으면(routeMode==='flat') 마을 마커와 겹쳐 안 보이는 문제를
+    // 피하려고 처음 열 때만 마을 마커를 기본으로 꺼줌 — 사용자가 체크박스로 언제든 다시 켤 수 있음.
+    if(!this._mapLayerDefaultsSet){
+      const hasFlatOrder = this.routeMode==='flat' && this.flatOrder && this.flatOrder.length>0;
+      document.getElementById('mapShowVillages').checked = !hasFlatOrder;
+      document.getElementById('mapShowParcels').checked = true;
+      document.getElementById('mapShowRouteLine').checked = hasFlatOrder;
+      this._mapLayerDefaultsSet = true;
+    }
+    this.renderMapScreen();
+  },
+
+  async renderMapScreen(){
+    const container = document.getElementById('kakaoMapContainer');
+    if(GEOCODE_PROVIDER !== 'kakao'){
+      container.innerHTML = '<div class="empty-note">현재 지오코딩 제공자(juso)에서는 지도 보기를 지원하지 않아요.</div>';
+      return;
+    }
+    if(!KAKAO_APP_KEYS.some(isKakaoKeyConfigured)){
+      container.innerHTML = '<div class="empty-note">카카오 API 키가 아직 설정되지 않아 지도를 표시할 수 없어요.</div>';
+      return;
+    }
+    if(!_kakaoMap){
+      try{
+        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
+      }catch(e){
+        container.innerHTML = '<div class="empty-note">지도를 불러오지 못했어요. 네트워크 상태를 확인해주세요.</div>';
+        return;
+      }
+      container.innerHTML = '';
+      _kakaoMap = new kakao.maps.Map(container, {
+        center: new kakao.maps.LatLng(35.9678, 126.7369), // 기본 중심 — 마커가 있으면 아래서 바로 재조정됨
+        level: 8
+      });
+    } else {
+      // 화면이 hidden(display:none) 상태였다가 다시 보이면 타일이 깨져 보일 수 있어 재계산.
+      setTimeout(()=> kakao.maps.event.trigger(_kakaoMap, 'relayout'), 0);
+    }
+    this.renderMapMarkers();
+  },
+
+  // 필지 핀을 클릭했을 때 주소/순번을 보여줌 — renderMapMarkers가 매번 채워두는
+  // this._mapParcelCache를 인덱스로 참조함 (CustomOverlay는 InfoWindow를 못 쓰므로
+  // 클릭 핸들러를 직접 붙여서 alert로 대체).
+  // 범례 칩을 탭하면 그 마을의 지도 핀만 보이게/안 보이게 전환 — 데이터를 지우는 게
+  // 아니라 표시 여부만 바꾸는 것이라 다시 탭하면 그대로 돌아옴(15번째 세션).
+  toggleVillageMapVisibility(key){
+    const v = this.villages[key];
+    if(!v) return;
+    v.mapHidden = !v.mapHidden;
+    this.renderMapMarkers();
+  },
+
+  showParcelPin(i){
+    const p = (this._mapParcelCache||[])[i];
+    if(!p) return;
+    const withOrder = (this.flatOrder && this.flatOrder.length>0);
+    const jibunPart = p.jibun ? ` (지번 ${p.jibun})` : '';
+    alert((withOrder ? `${i+1}번째 필지${jibunPart}\n` : `필지${jibunPart}\n`) + p.addr + `\n${p.villageName}`);
+  },
+
+  renderMapMarkers(){
+    if(!_kakaoMap) return;
+    _kakaoMapMarkers.forEach(m=>m.setMap(null));
+    _kakaoMapMarkers = [];
+    if(_kakaoRoutePolyline){ _kakaoRoutePolyline.setMap(null); _kakaoRoutePolyline = null; }
+    const bounds = new kakao.maps.LatLngBounds();
+    let any = false;
+
+    const showVillages = document.getElementById('mapShowVillages').checked;
+    const showParcels = document.getElementById('mapShowParcels').checked;
+    const showRouteLine = document.getElementById('mapShowRouteLine').checked;
+
+    // 마을마다 고정 색을 배정 — 마을 마커와 필지 배지에 같은 색을 써서, 여러 마을을
+    // 한꺼번에 지도에 띄워도 어떤 필지가 어느 마을 소속인지 색으로 바로 구분되게 함
+    // (14번째 세션, "여러 마을 섞이면 구분이 안 된다" 피드백 반영).
+    const colorMap = villageColorMap(this.villageOrder);
+
+    // 마을 중심 좌표 (마을 좌표 자동계산 / GPS 태깅 결과) — 필지 배지(작은 원)와 뚜렷이
+    // 구분되도록 큰 SVG 핀 모양(끝이 뾰족한 전형적인 지도 핀)으로 표시. 이모지(🏘️)는
+    // 너무 작아서 잘 안 보인다는 피드백으로 벡터 SVG 핀으로 교체함(14번째 세션).
+    // 핀의 뾰족한 끝(tip)이 정확히 좌표를 가리키도록 yAnchor:1로 앵커링.
+    // 마을별 핀 개별 켜기/끄기 — 전체 마을/필지 체크박스와는 별개로, 마을 하나하나를
+    // 지우지 않고 "보이게/안 보이게"만 전환할 수 있도록 함(15번째 세션, "마을별 핀을
+    // 껐다 켰다 할 수 있게 해달라" 요청 반영). 범례 칩을 눌러서 토글하고, 숨겨진
+    // 마을은 v.mapHidden=true로 표시만 될 뿐 데이터는 그대로 남아있음.
+    if(showVillages){
+      this.villageOrder.forEach(k=>{
+        const v = this.villages[k];
+        if(!v.centroid || v.mapHidden) return;
+        const color = colorMap[k];
+        const pos = new kakao.maps.LatLng(v.centroid.lat, v.centroid.lng);
+        const overlay = new kakao.maps.CustomOverlay({
+          position: pos, yAnchor: 1, xAnchor: 0.5, zIndex: 4,
+          content: `<div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="background:${color};color:#fff;font-size:11.5px;font-weight:700;padding:2px 8px;
+              border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.3);">${v.name} (${v.parcels.length})</div>
+            <svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));">
+              <path d="M14 0C6.3 0 0 6.3 0 14c0 10.5 14 22 14 22s14-11.5 14-22C28 6.3 21.7 0 14 0z" fill="${color}" stroke="#fff" stroke-width="2"/>
+              <circle cx="14" cy="14" r="5.5" fill="#fff"/>
+            </svg>
+          </div>`
+        });
+        overlay.setMap(_kakaoMap);
+        _kakaoMapMarkers.push(overlay);
+        bounds.extend(pos);
+        any = true;
+      });
+    }
+
+    // 출발지 핀 — 출발지를 설정해뒀으면(GPS/검색) 지도에서 바로 보이도록 항상 표시함
+    // (15번째 세션, "출발지가 있으면 지도에 핀으로 나타나야 하는거 아니야?" 요청 반영).
+    // 마을/필지 핀과 헷갈리지 않도록 진한 남색 깃발 핀으로 구분.
+    if(this.startPoint){
+      const pos = new kakao.maps.LatLng(this.startPoint.lat, this.startPoint.lng);
+      const overlay = new kakao.maps.CustomOverlay({
+        position: pos, yAnchor: 1, xAnchor: 0.5, zIndex: 6,
+        content: `<div style="display:flex;flex-direction:column;align-items:center;">
+          <div style="background:#1c3d6e;color:#fff;font-size:11.5px;font-weight:700;padding:2px 8px;
+            border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.3);">🚩 출발지</div>
+          <svg width="26" height="34" viewBox="0 0 26 34" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));">
+            <path d="M13 0C5.8 0 0 5.8 0 13c0 9.7 13 21 13 21s13-11.3 13-21C26 5.8 20.2 0 13 0z" fill="#1c3d6e" stroke="#fff" stroke-width="2"/>
+            <circle cx="13" cy="13" r="5" fill="#fff"/>
+          </svg>
+        </div>`
+      });
+      overlay.setMap(_kakaoMap);
+      _kakaoMapMarkers.push(overlay);
+      bounds.extend(pos);
+      any = true;
+    }
+
+    // 필지 좌표 (필지 좌표 자동계산 결과) — 순서가 계산돼 있으면 그 순서를, 아니면
+    // 현재 선택된 마을들의 좌표 있는 필지를 그대로 보여줌. 배지 색은 소속 마을 색과
+    // 동일하게, 옆에는 본번-부번(지번) 태그를 항상 붙여서 현장에서 어느 필지인지
+    // 바로 알아볼 수 있게 함(14번째 세션 — 순번만으로는 어떤 필지인지 알 수 없다는 피드백).
+    const parcelList = (this.flatOrder && this.flatOrder.length)
+      ? this.flatParcelList()
+      : this.villageOrder.flatMap(k=>this.villages[k].parcels);
+    this._mapParcelCache = parcelList;
+    const hasOrder = this.flatOrder && this.flatOrder.length>0;
+    if(showParcels){
+      parcelList.forEach((p,i)=>{
+        if(!p.coord) return;
+        const pv = this.villages[p.villageKey];
+        if(pv && pv.mapHidden) return; // 마을이 개별로 꺼져있으면 그 마을 필지도 같이 숨김
+        const pos = new kakao.maps.LatLng(p.coord.lat, p.coord.lng);
+        const badgeLabel = hasOrder ? (i+1) : '';
+        const color = colorMap[p.villageKey] || '#ff5a3c';
+        const jibunTag = p.jibun ? `<div style="margin-left:3px;background:#fff;border:1.5px solid ${color};color:${color};
+            font-size:11px;font-weight:700;padding:1px 6px;border-radius:6px;white-space:nowrap;
+            box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>` : '';
+        const overlay = new kakao.maps.CustomOverlay({
+          position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 5,
+          content: `<div style="display:flex;align-items:center;">
+            <div onclick="App.showParcelPin(${i})" title="${p.addr.replace(/"/g,'&quot;')}"
+              style="width:24px;height:24px;border-radius:50%;background:${color};border:2px solid #fff;
+              box-shadow:0 1px 3px rgba(0,0,0,.4);color:#fff;font-size:11px;font-weight:700;
+              display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">${badgeLabel}</div>
+            ${jibunTag}
+          </div>`
+        });
+        overlay.setMap(_kakaoMap);
+        _kakaoMapMarkers.push(overlay);
+        bounds.extend(pos);
+        any = true;
+      });
+    }
+
+    // 여러 마을이 함께 지도에 떠 있을 때, 위 색이 각각 어느 마을인지 대조해볼 수 있는
+    // 범례 — 15번째 세션부터 칩을 누르면 그 마을 핀만 켜고/끌 수 있는 토글 버튼 역할도
+    // 겸함(전체 삭제가 아니라 표시만 켜고 끔). 마을이 1개뿐이면 색 구분·개별 토글 모두
+    // 의미 없으니 숨김(전체 마을/필지 체크박스로 충분).
+    const legendEl = document.getElementById('mapVillageLegend');
+    if(showVillages || showParcels){
+      const villagesInView = this.villageOrder.map(k=>this.villages[k]).filter(v=> (showVillages && v.centroid) || (showParcels && v.parcels.some(p=>p.coord)));
+      if(villagesInView.length>1){
+        legendEl.innerHTML = villagesInView.map(v=>
+          `<button type="button" class="vl-chip ${v.mapHidden?'off':''}" onclick="App.toggleVillageMapVisibility('${v.key}')" title="${v.mapHidden?'탭하면 다시 표시':'탭하면 숨기기'}">
+            <span class="vl-dot" style="background:${v.mapHidden ? 'var(--border)' : colorMap[v.key]};"></span>${v.name}
+          </button>`
+        ).join('');
+        legendEl.classList.remove('hidden');
+        document.getElementById('mapLegendHint').classList.remove('hidden');
+      } else {
+        legendEl.classList.add('hidden');
+        document.getElementById('mapLegendHint').classList.add('hidden');
+      }
+    } else {
+      legendEl.classList.add('hidden');
+      document.getElementById('mapLegendHint').classList.add('hidden');
+    }
+
+
+    // 필지 기준 순서가 있으면 방문 순서대로 선을 이어서, 계산이 의도대로 됐는지
+    // 지도에서 한눈에 검증할 수 있게 함.
+    // 14번째 세션 수정: 이 경로 좌표 수집을 위 showParcels 블록 "안"에 넣어뒀던 게 버그였음 —
+    // "필지 좌표" 체크를 끄면 routePath가 아예 안 채워져서 "필지 순서선"만 켜도 선이 안
+    // 그려졌음. 이제 showParcels와 무관하게, 순서(hasOrder)만 있으면 항상 경로를 만듦.
+    const routeStatusEl = document.getElementById('routeLineStatus');
+    if(showRouteLine){
+      if(!hasOrder){
+        routeStatusEl.textContent = '➰ 필지 순서선: 아직 필지 방문 순서가 계산되지 않았어요 — 계산 화면에서 "기준별 순서"의 "필지" 또는 "출발지" 버튼을 먼저 눌러주세요.';
+        routeStatusEl.classList.remove('hidden');
+      } else {
+        const routePath = parcelList.filter(p=>p.coord).map(p=> new kakao.maps.LatLng(p.coord.lat, p.coord.lng));
+        // 출발지가 설정돼 있으면 출발지 → 1번 필지부터 선이 이어지도록 경로 맨 앞에 추가
+        // (15번째 세션, "출발지부터 1번으로 연결선이 이어지도록" 요청 반영).
+        if(this.startPoint) routePath.unshift(new kakao.maps.LatLng(this.startPoint.lat, this.startPoint.lng));
+        if(routePath.length>=2){
+          _kakaoRoutePolyline = new kakao.maps.Polyline({
+            path: routePath, strokeWeight: 3, strokeColor: '#2b7fff',
+            strokeOpacity: 0.85, strokeStyle: 'solid'
+          });
+          _kakaoRoutePolyline.setMap(_kakaoMap);
+          routeStatusEl.classList.add('hidden');
+        } else {
+          routeStatusEl.textContent = '➰ 필지 순서선: 좌표가 있는 필지가 2개 이상이어야 선을 그릴 수 있어요 (현재 ' + routePath.length + '개).';
+          routeStatusEl.classList.remove('hidden');
+        }
+      }
+    } else {
+      routeStatusEl.classList.add('hidden');
+    }
+
+    if(any) _kakaoMap.setBounds(bounds);
+  },
+
+  fitMapToMarkers(){
+    if(!_kakaoMap || _kakaoMapMarkers.length===0){ alert('지도에 표시된 좌표가 없어요.'); return; }
+    const bounds = new kakao.maps.LatLngBounds();
+    _kakaoMapMarkers.forEach(m=> bounds.extend(m.getPosition()));
+    _kakaoMap.setBounds(bounds);
+  },
+
+  // 내 위치 보기 — 브라우저 GPS만 사용, 카카오 API 호출 없음. 켜져 있는 동안
+  // watchPosition으로 계속 갱신되므로, 이동하면 지도 위 파란 점도 같이 움직임.
+  toggleMapGps(){
+    if(_kakaoGpsWatchId !== null){ this.stopMapGps(); return; }
+    if(!navigator.geolocation){ alert('이 브라우저는 위치 확인을 지원하지 않아요'); return; }
+    if(!_kakaoMap){ alert('지도가 아직 준비되지 않았어요.'); return; }
+    const btn = document.getElementById('mapGpsBtn');
+    const status = document.getElementById('mapGpsStatus');
+    btn.textContent = '⏹ 내 위치 끄기';
+    btn.classList.add('active');
+    status.textContent = '위치 확인 중...';
+    let firstFix = true;
+    _kakaoGpsWatchId = navigator.geolocation.watchPosition(pos=>{
+      const {latitude, longitude} = pos.coords;
+      const kpos = new kakao.maps.LatLng(latitude, longitude);
+      if(!_kakaoUserMarker){
+        _kakaoUserMarker = new kakao.maps.Marker({
+          position: kpos, map: _kakaoMap, zIndex: 10,
+          image: new kakao.maps.MarkerImage(
+            'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(
+              `<svg xmlns="http://www.w3.org/2000/svg" width="26" height="26"><circle cx="13" cy="13" r="9" fill="#2b7fff" stroke="white" stroke-width="3"/></svg>`
+            ),
+            new kakao.maps.Size(26,26)
+          )
+        });
+      } else {
+        _kakaoUserMarker.setPosition(kpos); // 이동할 때마다 마커가 새 위치로 동적으로 이동
+      }
+      if(firstFix){ _kakaoMap.setCenter(kpos); _kakaoMap.setLevel(4); firstFix = false; }
+      status.textContent = `내 위치 추적 중 (${latitude.toFixed(5)}, ${longitude.toFixed(5)})`;
+    }, err=>{
+      status.textContent = '위치를 가져오지 못했어요. 브라우저 위치 권한을 확인해주세요.';
+      this.stopMapGps();
+    }, {enableHighAccuracy:true, maximumAge:5000, timeout:10000});
+  },
+
+  stopMapGps(){
+    if(_kakaoGpsWatchId !== null){
+      navigator.geolocation.clearWatch(_kakaoGpsWatchId);
+      _kakaoGpsWatchId = null;
+    }
+    if(_kakaoUserMarker){ _kakaoUserMarker.setMap(null); _kakaoUserMarker = null; }
+    const btn = document.getElementById('mapGpsBtn');
+    const status = document.getElementById('mapGpsStatus');
+    if(btn){ btn.textContent = '📍 내 위치 보기'; btn.classList.remove('active'); }
+    if(status){ status.textContent = '내 위치는 아직 켜지 않았어요'; }
+  },
+
+  // Zero-API fallback: sort villages by their 법정동코드 (legal-dong code), when present.
+  // This doesn't require any coordinates or network calls at all.
+  sortByLegalCode(){
+    const withCode = this.villageOrder.filter(k=>this.villages[k].legalCode);
+    if(withCode.length < 2){
+      alert('법정동코드가 있는 마을이 2개 미만이에요. 컬럼 확인 화면에서 법정동코드 열을 지정했는지 확인해주세요.');
+      return;
+    }
+    this.villageOrder.sort((a,b)=>{
+      const ca = this.villages[a].legalCode, cb = this.villages[b].legalCode;
+      if(!ca && !cb) return 0;
+      if(!ca) return 1;
+      if(!cb) return -1;
+      const na = parseInt(ca,10), nb = parseInt(cb,10);
+      if(!isNaN(na) && !isNaN(nb) && na!==nb) return na-nb;
+      return String(ca).localeCompare(String(cb));
+    });
+    this.renderRoute();
+  },
+
+  // ---------- SETTINGS ----------
+  openSettings(){
+    const n = Object.keys(this.villageCoordRef||{}).length;
+    document.getElementById('coordRefCount').textContent = n>0 ? `현재 저장된 마을 좌표: ${n}개` : '아직 저장된 마을 좌표가 없어요.';
+    this.renderKakaoQuota();
+    document.getElementById('settingsModal').classList.remove('hidden');
+  },
+  closeSettings(){ document.getElementById('settingsModal').classList.add('hidden'); },
+
+  rememberVillageCoord(v){
+    if(!v.centroid) return;
+    this.villageCoordRef[v.key] = {name:v.name, sigunguKey:v.sigunguKey, lat:v.centroid.lat, lng:v.centroid.lng};
+    try{ localStorage.setItem('frp_village_coord_ref', JSON.stringify(this.villageCoordRef)); }catch(e){ /* storage full or unavailable, non-fatal */ }
+  },
+
+  importCoordRef(){ document.getElementById('coordRefFile').click(); },
+  handleCoordRefFile(e){
+    const file = e.target.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ev=>{
+      try{
+        const data = JSON.parse(ev.target.result);
+        let appliedNow = 0;
+        Object.keys(data).forEach(k=>{
+          this.villageCoordRef[k] = data[k];
+          if(this.villages[k] && !this.villages[k].centroid){
+            this.villages[k].centroid = {lat:data[k].lat, lng:data[k].lng, source:'ref'};
+            appliedNow++;
+          }
+        });
+        try{ localStorage.setItem('frp_village_coord_ref', JSON.stringify(this.villageCoordRef)); }catch(err){}
+        alert(`참조표를 불러왔어요. (전체 ${Object.keys(data).length}개 마을, 지금 화면에 바로 적용된 마을 ${appliedNow}개)`);
+        this.openSettings();
+        if(document.getElementById('screen-route') && !document.getElementById('screen-route').classList.contains('hidden')){
+          this.renderRoute(); this.updateSuggestBtn();
+        }
+      }catch(err){ alert('JSON 파일을 읽지 못했어요. 이 도구에서 내보낸 참조표 파일인지 확인해주세요.'); }
+      e.target.value = '';
+    };
+    reader.readAsText(file);
+  },
+  exportCoordRef(){
+    const data = this.villageCoordRef || {};
+    if(Object.keys(data).length===0){ alert('저장된 마을 좌표가 아직 없어요. GPS 태깅이나 마을 위치 확인을 먼저 해보세요.'); return; }
+    const blob = new Blob([JSON.stringify(data, null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `마을좌표참조표_${new Date().toISOString().slice(0,10).replace(/-/g,'')}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  },
+
+  // ---------- GEOCODING DISPATCHER ----------
+  // Single entry point every caller (village-level, parcel-level, start-point
+  // search) goes through. Routes to kakao or juso based on GEOCODE_PROVIDER —
+  // callers don't need to know which provider is active.
+  hasActiveGeocodeKey(){
+    if(GEOCODE_PROVIDER === 'kakao') return KAKAO_APP_KEYS.some(isKakaoKeyConfigured);
+    return !!JUSO_SEARCH_KEY && !!JUSO_COORD_KEY && JUSO_SEARCH_KEY !== 'YOUR_JUSO_SEARCH_API_KEY';
+  },
+  async geocodeAddress(addrText){
+    if(GEOCODE_PROVIDER === 'kakao') return this.geocodeAddressKakao(addrText);
+    return this.geocodeAddressJuso(addrText);
+  },
+
+  // ---------- GEOCODING (카카오, 키 2개 자동 전환) ----------
+  // Shares the same in-memory parcelCoordCache as the juso path (same shape:
+  // norm address string -> {lat,lng}), so switching GEOCODE_PROVIDER mid-session
+  // doesn't duplicate lookups for addresses already resolved.
+  //
+  // 전환 전략 (SDK가 "진짜 쿼터초과"를 구분해서 알려주지 않는다는 한계 때문에 —
+  // 위 KAKAO_SWITCH_THRESHOLD 주석 참고 — 두 가지를 함께 씀):
+  //   1) 선제 전환: 현재 키의 오늘 사용량이 안전선(KAKAO_SWITCH_THRESHOLD)을 넘으면,
+  //      호출해보지도 않고 바로 다음 키로 넘어감.
+  //   2) 사후 전환: 호출했는데 애매한 에러(kakao-error)가 나면, 다음 키로 한 번
+  //      바꿔서 같은 주소를 재시도함. "결과없음(no-match)"은 쿼터 문제가 아니라
+  //      진짜 주소를 못 찾은 것이므로 키를 바꾸지 않고 그대로 실패 처리함.
+  //   두 키 모두 안전선을 넘었거나 모두 실패하면 {error:'all-keys-exhausted'} 반환.
+  advanceKakaoKey(){
+    if(_kakaoKeyIndex < KAKAO_APP_KEYS.length-1){ _kakaoKeyIndex++; return true; }
+    return false;
+  },
+  async geocodeAddressKakao(addrText){
+    const norm = String(addrText).trim();
+    if(this.parcelCoordCache[norm]) return {ok:true, ...this.parcelCoordCache[norm], cached:true};
+
+    for(let attempt=0; attempt<KAKAO_APP_KEYS.length; attempt++){
+      const idx = _kakaoKeyIndex;
+      const key = KAKAO_APP_KEYS[idx];
+      if(!isKakaoKeyConfigured(key)){
+        if(this.advanceKakaoKey()) continue;
+        return {error:'no-key'};
+      }
+      const q = loadKakaoQuota(idx);
+      if(q.count >= KAKAO_SWITCH_THRESHOLD && this.advanceKakaoKey()){
+        this.renderKakaoQuota();
+        continue; // 선제 전환: 이 키는 시도하지 않고 다음 키로
+      }
+      try{
+        await ensureKakaoSdkLoaded(idx);
+        const r = await geocoderKakaoRaw(norm);
+        if(r.ok){
+          bumpKakaoQuota(idx);
+          bumpSharedKakaoQuota(idx);
+          this.renderKakaoQuota();
+          this.parcelCoordCache[norm] = {lat:r.lat, lng:r.lng};
+          return {ok:true, lat:r.lat, lng:r.lng};
+        }
+        if(r.error === 'no-match') return r; // 진짜 결과없음 — 키 전환 대상 아님
+        if(this.advanceKakaoKey()){ this.renderKakaoQuota(); continue; } // 사후 전환 재시도
+        return r;
+      }catch(e){
+        if(this.advanceKakaoKey()){ this.renderKakaoQuota(); continue; }
+        return {error:'network', message:String(e)};
+      }
+    }
+    return {error:'all-keys-exhausted'};
+  },
+  renderKakaoQuota(){
+    const useShared = isFirebaseConfigured();
+    const remain = KAKAO_APP_KEYS.reduce((sum, key, i)=>{
+      if(!isKakaoKeyConfigured(key)) return sum;
+      const used = useShared && _sharedKakaoQuota[i] !== undefined
+        ? _sharedKakaoQuota[i]
+        : loadKakaoQuota(i).count;
+      return sum + Math.max(0, KAKAO_DAILY_LIMIT - used);
+    }, 0);
+    const text = `오늘 남은 조회 ${remain.toLocaleString()}건`;
+    const box = document.getElementById('kakaoQuotaBox');
+    const badge = document.getElementById('quotaBadge');
+    if(box) box.textContent = text;
+    if(badge) badge.textContent = text;
+  },
+
+  // ---------- GEOCODING (village-level, juso.go.kr) ----------
+  // Calls the government address API once per village that's missing a
+  // centroid — never once per parcel — so API usage stays roughly constant
+  // regardless of how many thousand parcels are in the file. Only the
+  // constructed "시군구 + 마을명" string is sent; no owner names or other
+  // columns leave the browser. Uses the same juso.go.kr pipeline as the
+  // parcel-level geocoder below (도로명주소 검색API → 좌표제공API).
+  async geocodeVillages(){
+    if(!this.hasActiveGeocodeKey()){
+      alert('지오코딩 API 키가 아직 설정되지 않았어요. 관리자에게 문의해주세요.');
+      return;
+    }
+    const targets = this.villageOrder.map(k=>this.villages[k]).filter(v=>!v.centroid);
+    if(targets.length===0){ alert('선택된 마을은 위치 확인이 이미 모두 끝났어요.'); return; }
+    if(!confirm(`위치 확인이 안 된 마을 ${targets.length}곳을 조회할게요 (마을당 1건 = 총 ${targets.length}건 요청).\n계속할까요?`)) return;
+
+    const status = document.getElementById('geoStatus');
+    let ok=0, fail=0;
+    for(const v of targets){
+      status.textContent = `조회 중 (${ok+fail+1}/${targets.length}) · ${v.name}`;
+      const q = [v.sigunguKey, v.name].filter(Boolean).join(' ');
+      try{
+        const r = await this.geocodeAddress(q);
+        if(r.ok){ v.centroid = {lat:r.lat, lng:r.lng, source:'api'}; this.rememberVillageCoord(v); ok++; }
+        else fail++;
+      }catch(err){ fail++; }
+      this.renderRoute();
+      if(GEOCODE_PROVIDER === 'juso') await delay(JUSO_PACE_MS);
+    }
+    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건` + (fail>0 ? ' (실패한 마을은 📍로 직접 태깅해주세요, 또는 카카오 쿼터 소진일 수 있어요 — 설정에서 오늘 사용량 확인)' : '');
+    this.updateSuggestBtn();
+  },
+
+  // ---------- PARCEL-LEVEL GEOCODING (juso.go.kr) ----------
+  // Two-step per address: 도로명주소 검색API (address text -> admCd/rnMgtSn/
+  // buldMnnm/buldSlno codes) then 좌표제공API (those codes -> TM coords),
+  // converted to WGS84. Unlike the village-level flow above, this sends the
+  // full 소재지 address string per parcel, so usage is disclosed up front in
+  // the button's status line and in the pre-run confirm dialog.
+  getJusoSearchKey(){ return JUSO_SEARCH_KEY; },
+  getJusoCoordKey(){ return JUSO_COORD_KEY; },
+
+  async jusoSearchAddress(addrText){
+    const key = this.getJusoSearchKey();
+    if(!key) return {error:'no-key'};
+    try{
+      const data = await jsonp('https://business.juso.go.kr/addrlink/addrLinkApiJsonp.do', {
+        confmKey:key, currentPage:1, countPerPage:1, keyword:addrText, resultType:'json'
+      });
+      const common = data && data.results && data.results.common;
+      if(!common) return {error:'bad-response'};
+      if(common.errorCode !== '0') return {error:common.errorCode, message:common.errorMessage};
+      const j = data.results.juso && data.results.juso[0];
+      if(!j) return {error:'no-match'};
+      return {ok:true, admCd:j.admCd, rnMgtSn:j.rnMgtSn, udrtYn:j.udrtYn, buldMnnm:j.buldMnnm, buldSlno:j.buldSlno};
+    }catch(e){ return {error:'network', message:String(e)}; }
+  },
+
+  async jusoGetCoord(fields){
+    const key = this.getJusoCoordKey();
+    if(!key) return {error:'no-key'};
+    try{
+      const data = await jsonp('https://business.juso.go.kr/addrlink/addrCoordApiJsonp.do', {
+        confmKey:key, admCd:fields.admCd, rnMgtSn:fields.rnMgtSn, udrtYn:fields.udrtYn||'0',
+        buldMnnm:fields.buldMnnm||'0', buldSlno:fields.buldSlno||'0', resultType:'json'
+      });
+      const common = data && data.results && data.results.common;
+      if(!common) return {error:'bad-response'};
+      if(common.errorCode !== '0') return {error:common.errorCode, message:common.errorMessage};
+      const j = data.results.juso && data.results.juso[0];
+      if(!j || !j.entX || !j.entY) return {error:'no-coord'};
+      const wgs = grs80TmToWgs84(parseFloat(j.entX), parseFloat(j.entY));
+      return {ok:true, lat:wgs.lat, lng:wgs.lng};
+    }catch(e){ return {error:'network', message:String(e)}; }
+  },
+
+  async geocodeAddressJuso(addrText){
+    const norm = String(addrText).trim();
+    if(this.parcelCoordCache[norm]) return {ok:true, ...this.parcelCoordCache[norm], cached:true};
+    const s = await this.jusoSearchAddress(norm);
+    if(!s.ok) return s;
+    await delay(JUSO_PACE_MS);
+    const c = await this.jusoGetCoord(s);
+    if(!c.ok) return c;
+    this.parcelCoordCache[norm] = {lat:c.lat, lng:c.lng};
+    return {ok:true, lat:c.lat, lng:c.lng};
+  },
+
+  async geocodeParcels(){
+    if(!this.hasActiveGeocodeKey()){
+      alert('지오코딩 API 키가 아직 설정되지 않았어요. 관리자에게 문의해주세요.');
+      return;
+    }
+    const all = this.villageOrder.flatMap(k=>this.villages[k].parcels);
+    const targets = all.filter(p=>!p.coord);
+    if(targets.length===0){ alert('선택된 필지는 위치 확인이 이미 모두 끝났어요.'); return; }
+    const paceMs = GEOCODE_PROVIDER === 'juso' ? JUSO_PACE_MS : 0;
+    const estMin = Math.max(1, Math.ceil(targets.length * Math.max(paceMs,120) / 60000));
+    const providerLabel = GEOCODE_PROVIDER === 'juso' ? '행정안전부 주소 API' : '카카오 지도 API';
+    if(!confirm(`필지 ${targets.length}개의 위치를 확인할게요.\n대략 ${estMin}분 정도 걸려요.\n각 필지의 소재지 주소가 ${providerLabel}로 전송됩니다 (다른 항목은 전송되지 않아요).\n중간에 "중단하기"로 멈출 수 있어요. 계속할까요?`)) return;
+
+    this._geoCancel = false;
+    const status = document.getElementById('parcelGeoStatus');
+    const cancelBtn = document.getElementById('parcelGeoCancelBtn');
+    cancelBtn.classList.remove('hidden');
+    let ok=0, fail=0;
+    for(let i=0;i<targets.length;i++){
+      if(this._geoCancel) break;
+      const p = targets[i];
+      // 지번(본번-부번)까지 합친 전체 주소로 조회해야 필지마다 다른 좌표가 나옴
+      // (소재지 열만 쓰면 같은 마을 필지가 전부 같은 지점으로 모임 — 13번째 세션 수정).
+      const fullAddr = fullGeocodeAddr(p.addr, p.jibun);
+      status.textContent = `조회 중 (${i+1}/${targets.length}) · ${fullAddr}`;
+      try{
+        const r = await this.geocodeAddress(fullAddr);
+        if(r.ok){ p.coord = {lat:r.lat, lng:r.lng, source:GEOCODE_PROVIDER+'-api'}; ok++; }
+        else fail++;
+      }catch(e){ fail++; }
+      if((i+1)%20===0) this.renderRoute();
+      if(paceMs) await delay(paceMs);
+    }
+    cancelBtn.classList.add('hidden');
+    this.renderRoute();
+    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건` + (this._geoCancel?' (중단됨)':'') + (fail>0?' (실패한 필지는 지번 순서대로 마을 그룹 안에 남아있어요, 카카오 쿼터 소진 여부도 설정에서 확인해보세요)':'');
+  },
+  cancelParcelGeocode(){ this._geoCancel = true; },
+
+  // ---------- START POINT (출발지 기준 순서 계산) ----------
+  async searchStartCandidates(){
+    const input = document.getElementById('startAddrInput');
+    const text = input.value.trim();
+    if(!text){ alert('출발지 주소나 지역명을 입력해주세요.'); return; }
+    if(!this.hasActiveGeocodeKey()){
+      alert('지오코딩 API 키가 아직 설정되지 않았어요.');
+      return;
+    }
+    const status = document.getElementById('startPointStatus');
+    status.textContent = '검색 중...';
+    document.getElementById('startCandidates').innerHTML = '';
+
+    const exact = await this.geocodeAddress(text);
+    let candidates = [];
+    if(exact.ok) candidates.push({name:text, addr:text, lat:exact.lat, lng:exact.lng});
+
+    if(GEOCODE_PROVIDER === 'kakao'){
+      try{
+        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
+        const kw = await placesKeywordSearchRaw(text);
+        if(kw.ok){
+          bumpKakaoQuota(_kakaoKeyIndex);
+          bumpSharedKakaoQuota(_kakaoKeyIndex);
+          this.renderKakaoQuota();
+          kw.list.forEach(item=>{
+            if(!candidates.some(c=>c.lat===item.lat && c.lng===item.lng)) candidates.push(item);
+          });
+        }
+      }catch(e){ /* keyword search optional fallback */ }
+    }
+
+    if(candidates.length===0){
+      status.textContent = '결과가 없어요. 다른 표현으로 검색해보세요.';
+      return;
+    }
+    if(candidates.length===1){
+      this.pickStartCandidate(0, candidates);
+      return;
+    }
+    this.renderStartCandidates(candidates);
+    status.textContent = '아래에서 출발지를 선택해주세요.';
+  },
+  renderStartCandidates(list){
+    this._startCandidates = list;
+    document.getElementById('startCandidates').innerHTML = list.slice(0,5).map((c,i)=>`
+      <button class="ghost-btn" style="text-align:left;margin-top:6px;" onclick="App.pickStartCandidate(${i})">
+        ${c.name}${c.addr && c.addr!==c.name ? ' · '+c.addr : ''}
+      </button>`).join('');
+  },
+  pickStartCandidate(i, list){
+    const c = (list || this._startCandidates)[i];
+    if(!c) return;
+    this.startPoint = {lat:c.lat, lng:c.lng, label:c.name, source:'search'};
+    document.getElementById('startPointStatus').textContent = `출발지: ${c.name} (${c.lat.toFixed(5)}, ${c.lng.toFixed(5)})`;
+    document.getElementById('startCandidates').innerHTML = '';
+  },
+  setStartFromGPS(){
+    if(!navigator.geolocation){ alert('이 브라우저는 위치 확인을 지원하지 않아요'); return; }
+    const status = document.getElementById('startPointStatus');
+    status.textContent = '위치 확인 중...';
+    navigator.geolocation.getCurrentPosition(pos=>{
+      this.startPoint = {lat:pos.coords.latitude, lng:pos.coords.longitude, label:'현재 위치(GPS)', source:'gps'};
+      status.textContent = `출발지: 현재 위치 (${this.startPoint.lat.toFixed(5)}, ${this.startPoint.lng.toFixed(5)})`;
+    }, err=>{ status.textContent = '위치를 가져오지 못했어요. 브라우저 위치 권한을 확인해주세요.'; }, {enableHighAccuracy:true, timeout:10000});
+  },
+  clearStartPoint(){
+    this.startPoint = null;
+    this._startCandidates = [];
+    document.getElementById('startPointStatus').textContent = '출발지가 설정되지 않았어요';
+    document.getElementById('startAddrInput').value = '';
+    document.getElementById('startCandidates').innerHTML = '';
+  },
+
+  // ---------- FLAT (필지 전체) ORDER ----------
+  // Nearest-neighbor chain over individual parcel coordinates, flattened
+  // across all currently selected villages/parcels — ignores village
+  // grouping entirely. useStartPoint=false ("필지 기준"): starts from the
+  // first coordinate-bearing parcel, arbitrary but deterministic.
+  // useStartPoint=true ("출발지 기준"): starts from this.startPoint (GPS or
+  // searched address) instead.
+  computeFlatOrder(useStartPoint){
+    const all = this.villageOrder.flatMap(k=>this.villages[k].parcels);
+    const withCoord = all.filter(p=>p.coord);
+    const withoutCoord = all.filter(p=>!p.coord);
+    if(withCoord.length < 2){
+      alert('좌표가 있는 필지가 2개 이상이어야 순서를 계산할 수 있어요. 먼저 "필지 위치 확인"을 실행해주세요.');
+      return;
+    }
+    let cur;
+    if(useStartPoint){
+      if(!this.startPoint){ alert('출발지가 설정되지 않았어요. GPS 또는 출발지 검색으로 먼저 설정해주세요.'); return; }
+      cur = this.startPoint;
+    }
+    let pool = [...withCoord];
+    if(!cur) cur = pool[0].coord;
+    const ordered = [];
+    while(pool.length){
+      let bestIdx=0, bestDist=Infinity;
+      pool.forEach((p,i)=>{
+        const d = haversine(cur.lat, cur.lng, p.coord.lat, p.coord.lng);
+        if(d<bestDist){ bestDist=d; bestIdx=i; }
+      });
+      const chosen = pool.splice(bestIdx,1)[0];
+      ordered.push(chosen);
+      cur = chosen.coord;
+    }
+    this.flatOrder = [...ordered, ...withoutCoord].map(p=>p.id);
+    this.routeMode = 'flat';
+    this.renderRoute();
+  },
+
+  // ---------- EXPORT ----------
+  // Lets the user pick which extra columns (owner name, survey status, etc.) get
+  // included in the re-exported file. Core navigation fields are always included;
+  // everything else is opt-in, so the exported file carries only what's needed.
+  openExportModal(){
+    const box = document.getElementById('exportColChecks');
+    const keys = Object.keys((this.colMap && this.colMap.extra) || {});
+    if(keys.length===0){
+      box.innerHTML = '<p class="hint">선택 가능한 추가 항목이 없어요. 기본 항목만 내보내요.</p>';
+    } else {
+      let saved = {};
+      try{ saved = JSON.parse(localStorage.getItem('frp_export_cols')||'{}'); }catch(e){}
+      box.innerHTML = keys.map(k=>`
+        <label class="exportcol-row">
+          <input type="checkbox" data-col="${k}" ${saved[k] ? 'checked' : ''}>
+          ${k}
+        </label>`).join('');
+    }
+    document.getElementById('exportModal').classList.remove('hidden');
+  },
+  closeExportModal(){ document.getElementById('exportModal').classList.add('hidden'); },
+  doExport(){
+    const checks = document.querySelectorAll('#exportColChecks input[type=checkbox]');
+    const chosen = {};
+    checks.forEach(c=>{ chosen[c.dataset.col] = c.checked; });
+    try{ localStorage.setItem('frp_export_cols', JSON.stringify(chosen)); }catch(e){}
+    this.exportExcel(chosen);
+    this.closeExportModal();
+  },
+
+  exportExcel(chosenExtra){
+    chosenExtra = chosenExtra || {};
+    const rows = [];
+    let order = 1;
+    const pushRow = (p, villageName, sigunguKey)=>{
+      const row = {
+        '순서': order++,
+        '마을': villageName,
+        '시군구': sigunguKey,
+        '소재지': p.addr,
+        '본번': p.bon,
+        '부번': p.bu,
+        '완료여부': p.done ? '완료' : '미완료'
+      };
+      Object.keys(p.extra).forEach(k=>{ if(chosenExtra[k]) row[k] = p.extra[k]; });
+      rows.push(row);
+    };
+    if(this.routeMode==='flat'){
+      this.flatParcelList().forEach(p=> pushRow(p, p.villageName, p.sigunguKey));
+    } else {
+      this.villageOrder.forEach(key=>{
+        const v = this.villages[key];
+        v.parcels.forEach(p=> pushRow(p, v.name, v.sigunguKey));
+      });
+    }
+    if(rows.length===0){ alert('내보낼 필지가 없어요.'); return; }
+    const ws = XLSX.utils.json_to_sheet(rows);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, '오늘의동선');
+    const today = new Date().toISOString().slice(0,10).replace(/-/g,'');
+    XLSX.writeFile(wb, `현장조사동선_${today}.xlsx`);
+  }
+};
+
+App.init();
+</script>
+</body>
+</html>
