@@ -364,14 +364,14 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div class="next-card" id="nextCard"></div>
 
     <div class="gps-row">
-      <button class="gps-btn" id="gpsBtn" onclick="App.getCurrentPosition()">📍 내 위치 확인</button>
-      <button class="gps-btn" id="suggestBtn" onclick="App.suggestOrder()" disabled>🧭 마을 순서 추천</button>
+      <button class="gps-btn" id="gpsBtn" onclick="App.getCurrentPosition()">내 위치 확인</button>
+      <button class="gps-btn" id="suggestBtn" onclick="App.suggestOrder()" disabled>마을 순서 추천</button>
     </div>
     <div class="gps-status" id="gpsStatus">위치를 아직 확인하지 않았어요</div>
 
     <div class="gps-row">
-      <button class="gps-btn" id="geocodeBtn" onclick="App.geocodeVillages()">🌐 마을 위치 확인</button>
-      <button class="gps-btn" id="codeSortBtn" onclick="App.sortByLegalCode()">🔢 법정동코드순 정렬</button>
+      <button class="gps-btn" id="geocodeBtn" onclick="App.geocodeVillages()">마을 위치 확인</button>
+      <button class="gps-btn" id="codeSortBtn" onclick="App.sortByLegalCode()">법정동코드순 정렬</button>
     </div>
     <div class="geo-status" id="geoStatus">마을 위치 확인 전</div>
 
@@ -379,7 +379,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <h3 style="font-size:14.5px;margin-bottom:2px;">필지 단위 동선 계산</h3>
       <p class="hint" style="margin-top:2px;">필지 단위는 마을 단위보다 호출이 훨씬 많아요.</p>
       <div class="gps-row">
-        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">🧭 필지 위치 확인</button>
+        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
       </div>
       <div class="geo-status" id="parcelGeoStatus">필지 위치 확인 전</div>
@@ -391,15 +391,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div id="startCandidates"></div>
       <div class="gps-row" style="margin-top:8px;">
-        <button class="gps-btn" id="startGpsBtn" onclick="App.setStartFromGPS()">📍 현재 위치로 설정</button>
+        <button class="gps-btn" id="startGpsBtn" onclick="App.setStartFromGPS()">현재 위치로 설정</button>
         <button class="gps-btn" onclick="App.clearStartPoint()">✕ 지우기</button>
       </div>
       <div class="gps-status" id="startPointStatus">출발지가 설정되지 않았어요</div>
 
-      <label class="fieldlabel" style="margin-top:14px;">기준별 순서 (필지 / 출발지)</label>
+      <label class="fieldlabel" style="margin-top:14px;">기준별 순서 계산</label>
       <div class="gps-row" style="margin-top:6px;">
-        <button class="gps-btn" onclick="App.computeFlatOrder(false)">📐 필지</button>
-        <button class="gps-btn" onclick="App.computeFlatOrder(true)">🚩 출발지</button>
+        <button class="gps-btn" onclick="App.computeFlatOrder(false)">필지</button>
+        <button class="gps-btn" onclick="App.computeFlatOrder(true)">출발지</button>
       </div>
     </div>
 
@@ -410,8 +410,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <span class="backlink" onclick="App.goScreen('route')">← 계산 화면으로</span>
 
     <div class="gps-row">
-      <button class="gps-btn" id="mapGpsBtn" onclick="App.toggleMapGps()">📍 내 위치 보기</button>
-      <button class="gps-btn" onclick="App.fitMapToMarkers()">🔍 전체 보기</button>
+      <button class="gps-btn" id="mapGpsBtn" onclick="App.toggleMapGps()">내 위치</button>
+      <button class="gps-btn" onclick="App.fitMapToMarkers()">전체</button>
     </div>
     <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:2px;">
       <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
@@ -1412,8 +1412,8 @@ const App = {
     return `
       <div class="view-switch">
         <div class="vsw-highlight ${isFlat?'pos-flat':''}"></div>
-        <button class="${!isFlat?'active':''}" onclick="App.setRouteMode('village')">🏘️ 마을별 보기</button>
-        <button class="${isFlat?'active':''}" onclick="App.setRouteMode('flat')">📐 계산된 순서</button>
+        <button class="${!isFlat?'active':''}" onclick="App.setRouteMode('village')">마을별 보기</button>
+        <button class="${isFlat?'active':''}" onclick="App.setRouteMode('flat')">계산된 순서</button>
       </div>`;
   },
 
