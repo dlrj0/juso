@@ -452,7 +452,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div class="gps-status hidden" id="routeLineStatus"></div>
 
     <div class="nav-select-bar">
-      <button type="button" id="navSelectModeBtn" class="gps-btn" onclick="App.toggleNavSelectMode()">🧭 핀 선택 길찾기 모드 켜기</button>
+      <button type="button" id="navSelectModeBtn" class="gps-btn" onclick="App.toggleNavSelectMode()">🧭 핀 선택 길찾기 모드</button>
       <span class="hint" id="navSelectHint" style="margin:0;">모드를 켠 뒤 필지 핀을 순서대로 눌러 선택하세요 (예: 4→5→7 순으로 누르면 그 순서 그대로 경로를 찾아요).</span>
     </div>
     <div id="navSelectPanel" class="nav-select-panel hidden">
@@ -468,7 +468,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요.</p>
 
     <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
-    <p class="hint" style="margin-top:6px;">지도 표시·내 위치 확인은 카카오 API를 추가로 호출하지 않아요 — 이미 계산해둔 좌표를 화면에 핀으로 찍어줄 뿐입니다. "선택 구간 길찾기(도로)"만 예외로, 누를 때마다 별도의 카카오모빌리티 API를 1건씩 호출해요(설정에서 사용량 확인 가능).</p>
+    <p class="hint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
   </div>
 
 </div>
