@@ -761,6 +761,8 @@ function isFirebaseConfigured(){
   return !!(FIREBASE_CONFIG.apiKey && FIREBASE_CONFIG.databaseURL && !String(FIREBASE_CONFIG.apiKey).startsWith('YOUR_'));
 }
 let _sharedKakaoQuota = {};
+let _kakaoSharedResolved = {};  // idx별로 "파이어베이스에서 실제 값을 받았는지" 여부(로딩 깜빡임 방지용)
+let _kakaoSharedFailed = false; // 파이어베이스 연결 자체가 실패했는지
 let _firebaseReadyPromise = null;
 function loadFirebaseSdkScripts(){
   return new Promise((resolve, reject)=>{
@@ -797,16 +799,31 @@ function bumpSharedKakaoQuota(idx){
 }
 function subscribeSharedKakaoQuota(){
   if(!isFirebaseConfigured()) return;
+  // 값을 아직 못 받아온 상태에서 로컬(stale) 숫자를 먼저 보여줬다가 나중에 실제 값으로
+  // 바뀌면 "깜빡이며 과거값이 스쳐 지나가는" 것처럼 보임 — 그래서 응답 전엔 로딩 표시,
+  // 응답 오면 그때부터만 실제 값을 그림. 네트워크 문제로 응답이 안 오는 경우를 대비해
+  // 일정 시간 후엔 로컬 값으로 대체 표시(대신 "동기화 실패" 표시를 남김).
+  setTimeout(()=>{
+    const configured = KAKAO_APP_KEYS.filter(isKakaoKeyConfigured);
+    if(Object.keys(_kakaoSharedResolved).length < configured.length){
+      _kakaoSharedFailed = true;
+      App.renderKakaoQuota();
+    }
+  }, 6000);
   ensureFirebaseReady().then(db=>{
     if(!db) return;
     KAKAO_APP_KEYS.forEach((key,i)=>{
       if(!isKakaoKeyConfigured(key)) return;
       db.ref(`kakaoQuotaShared/${i}/${todayKeyKST()}`).on('value', snap=>{
         _sharedKakaoQuota[i] = snap.val() || 0;
+        _kakaoSharedResolved[i] = true;
         App.renderKakaoQuota();
       });
     });
-  }).catch(()=>{});
+  }).catch(()=>{
+    _kakaoSharedFailed = true;
+    App.renderKakaoQuota();
+  });
 }
 
 // TMAP 길찾기(경로) 쿼터는 기존엔 localStorage에만 저장돼서, 브라우저(기기)를 바꾸거나
@@ -825,15 +842,24 @@ function bumpSharedTmapRouteQuota(){
   }).catch(()=>{});
 }
 let _sharedTmapRouteQuota = null;
+let _tmapSharedResolved = false;
+let _tmapSharedFailed = false;
 function subscribeSharedTmapRouteQuota(){
   if(!isFirebaseConfigured()) return;
+  setTimeout(()=>{
+    if(!_tmapSharedResolved){ _tmapSharedFailed = true; App.renderKakaoQuota(); }
+  }, 6000);
   ensureFirebaseReady().then(db=>{
     if(!db) return;
     db.ref(`tmapRouteQuotaShared/${todayKeyKST()}`).on('value', snap=>{
       _sharedTmapRouteQuota = snap.val() || 0;
+      _tmapSharedResolved = true;
       App.renderKakaoQuota();
     });
-  }).catch(()=>{});
+  }).catch(()=>{
+    _tmapSharedFailed = true;
+    App.renderKakaoQuota();
+  });
 }
 const KAKAO_DAILY_LIMIT = 100000;
 const KAKAO_SWITCH_THRESHOLD = Math.floor(KAKAO_DAILY_LIMIT * 0.97);
@@ -2939,42 +2965,58 @@ const App = {
     const useShared = isFirebaseConfigured();
     const configuredKeyCount = KAKAO_APP_KEYS.filter(isKakaoKeyConfigured).length;
     const totalLimit = configuredKeyCount * KAKAO_DAILY_LIMIT;
-    const remain = KAKAO_APP_KEYS.reduce((sum, key, i)=>{
-      if(!isKakaoKeyConfigured(key)) return sum;
-      const used = useShared && _sharedKakaoQuota[i] !== undefined
-        ? _sharedKakaoQuota[i]
-        : loadKakaoQuota(i).count;
-      return sum + Math.max(0, KAKAO_DAILY_LIMIT - used);
-    }, 0);
-    const text = `오늘 남은 조회 ${remain.toLocaleString()}건`;
+    // 파이어베이스를 쓰는 상태인데 아직 공유 값을 하나도 못 받아왔으면(로딩 중), 로컬(stale)
+    // 숫자를 먼저 보여줬다가 실제 값으로 바뀌는 깜빡임을 막기 위해 로딩 문구만 표시.
+    // (연결 실패로 판단되면 _kakaoSharedFailed가 true가 되어 로컬 값으로 대체 표시함)
+    const kakaoStillLoading = useShared && !_kakaoSharedFailed &&
+      KAKAO_APP_KEYS.some((key,i)=> isKakaoKeyConfigured(key) && _kakaoSharedResolved[i]===undefined);
     const box = document.getElementById('kakaoQuotaBox');
     const badge = document.getElementById('quotaBadge');
-    if(box) box.textContent = text;
-    if(badge){
-      badge.textContent = `📊 ${text}`;
-      const ratio = totalLimit>0 ? remain/totalLimit : 1;
-      badge.classList.remove('low','critical');
-      if(totalLimit>0 && ratio < 0.05) badge.classList.add('critical');
-      else if(totalLimit>0 && ratio < 0.2) badge.classList.add('low');
+    if(kakaoStillLoading){
+      if(box) box.textContent = '조회량 확인중…';
+      if(badge){ badge.textContent = '📊 조회량 확인중…'; badge.classList.remove('low','critical'); }
+    } else {
+      const remain = KAKAO_APP_KEYS.reduce((sum, key, i)=>{
+        if(!isKakaoKeyConfigured(key)) return sum;
+        const used = (useShared && !_kakaoSharedFailed && _sharedKakaoQuota[i] !== undefined)
+          ? _sharedKakaoQuota[i]
+          : loadKakaoQuota(i).count;
+        return sum + Math.max(0, KAKAO_DAILY_LIMIT - used);
+      }, 0);
+      const staleNote = (useShared && _kakaoSharedFailed) ? ' (동기화 실패 · 이 브라우저 기준)' : '';
+      const text = `오늘 남은 조회 ${remain.toLocaleString()}건${staleNote}`;
+      if(box) box.textContent = text;
+      if(badge){
+        badge.textContent = `📊 ${text}`;
+        const ratio = totalLimit>0 ? remain/totalLimit : 1;
+        badge.classList.remove('low','critical');
+        if(totalLimit>0 && ratio < 0.05) badge.classList.add('critical');
+        else if(totalLimit>0 && ratio < 0.2) badge.classList.add('low');
+      }
     }
 
     // 길찾기(TMAP) 쿼터 — 단일 버킷. 키가 아예 없으면(내장 기본값도 미설정) 안내 문구만 표시.
     const navBox = document.getElementById('kakaoNavQuotaBox');
     if(navBox){
+      const usesSharedBucket = isFirebaseConfigured() && !isUsingTmapUserKey();
+      const tmapStillLoading = usesSharedBucket && !_tmapSharedResolved && !_tmapSharedFailed;
       if(!isTmapKeyConfigured(loadTmapAppKey())){
         navBox.textContent = '길찾기 API 키가 설정되지 않았어요.';
       } else if(isUsingTmapUserKey()){
         // 개인 키는 공유 카운터와 무관 — 이 브라우저에서 쓴 만큼만 로컬로 집계.
         const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - loadTmapRouteQuota().count);
         navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내가 입력한 키)`;
-      } else if(isFirebaseConfigured() && _sharedTmapRouteQuota !== null){
+      } else if(tmapStillLoading){
+        navBox.textContent = '길찾기 사용량 확인중…';
+      } else if(usesSharedBucket && _tmapSharedResolved){
         // 내장 공용 키: 파이어베이스 공유 카운터 기준(다른 사용자 사용량 포함, 실시간 반영).
         const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - _sharedTmapRouteQuota);
         navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내장 공용 키 · 전체 사용자 합산)`;
       } else {
-        // 파이어베이스 미설정이거나 아직 값을 못 받아왔을 때는 이 브라우저 기준 값으로 대체 표시.
+        // 파이어베이스 미설정이거나 연결에 실패했을 때는 이 브라우저 기준 값으로 대체 표시.
         const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - loadTmapRouteQuota().count);
-        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내장 공용 키 · 이 브라우저 기준, 다른 사용자 사용량 미반영)`;
+        const note = usesSharedBucket ? ' (동기화 실패 · 이 브라우저 기준)' : ' (내장 공용 키 · 이 브라우저 기준, 다른 사용자 사용량 미반영)';
+        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건${note}`;
       }
     }
   },
