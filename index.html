@@ -188,6 +188,24 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   }
   .parcel-row .pcheck{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0;}
 
+  .search-results{
+    position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:19;
+    background:var(--surface);border:1px solid var(--border);border-radius:12px;
+    box-shadow:0 6px 18px rgba(0,0,0,0.12);max-height:320px;overflow-y:auto;
+  }
+  .search-result-row{padding:10px 14px;border-bottom:1px solid var(--surface-2);cursor:pointer;}
+  .search-result-row:last-child{border-bottom:none;}
+  .search-result-row:active,.search-result-row:hover{background:var(--accent-soft);}
+  .search-result-row .sr-addr{font-size:13.5px;font-weight:600;}
+  .search-result-row .sr-done{font-size:10.5px;font-weight:700;color:var(--text-mute);background:var(--surface-2);padding:1px 6px;border-radius:100px;margin-left:4px;}
+  .search-result-row .sr-sub{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);margin-top:2px;}
+  .search-result-empty{padding:12px 14px;font-size:13px;color:var(--text-mute);}
+  @keyframes rowFlash{
+    0%{background:var(--emphasis-soft);}
+    100%{background:transparent;}
+  }
+  .parcel-row.row-flash{animation:rowFlash 1.4s ease-out;}
+
   [data-drag-id]{touch-action:pan-y;}
   [data-drag-id].dragging{touch-action:none;opacity:.55;box-shadow:0 8px 20px rgba(0,0,0,.18);position:relative;z-index:6;cursor:grabbing;}
   body.drag-active, body.drag-active *{user-select:none !important;-webkit-user-select:none !important;}
@@ -461,6 +479,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
     </div>
 
+    <div class="searchbar" style="position:relative;margin-top:2px;">
+      <input type="text" id="parcelSearchInput" placeholder="🔍 주소·지번으로 검색해서 바로 이동"
+        oninput="App.onParcelSearchInput()"
+        onkeydown="if(event.key==='Enter'){App.jumpToFirstParcelMatch();} else if(event.key==='Escape'){App.clearParcelSearch();}">
+      <button type="button" id="parcelSearchClearBtn" class="hidden" onclick="App.clearParcelSearch()"
+        style="border:1px solid var(--border);border-radius:10px;padding:0 14px;background:#fff;font-size:13px;font-weight:600;color:var(--text-mute);">✕</button>
+      <div id="parcelSearchResults" class="search-results hidden"></div>
+    </div>
+
     <div id="routeList"></div>
   </div>
 
@@ -480,6 +507,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
         <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers()"> 🛣️ 선택 구간 길찾기(도로)
       </label>
+      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+        완료여부
+        <select id="mapStatusFilter" onchange="App.renderMapMarkers()"
+          style="border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12.5px;background:#fff;">
+          <option value="all">전체</option>
+          <option value="undone">미완료만</option>
+          <option value="done">완료만</option>
+        </select>
+      </label>
     </div>
     <div class="gps-status hidden" id="routeLineStatus"></div>
 
@@ -496,8 +532,12 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <div id="navRouteStatus" class="gps-status" style="margin-top:6px;"></div>
     </div>
 
+    <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
+      <button type="button" onclick="App.setAllVillagesMapVisible(true)">마을 전체 켜기</button>
+      <button type="button" onclick="App.setAllVillagesMapVisible(false)">마을 전체 끄기</button>
+    </div>
     <div class="village-legend hidden" id="mapVillageLegend"></div>
-    <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요.</p>
+    <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요.</p>
 
     <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
     <p class="hint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
@@ -746,6 +786,33 @@ function subscribeSharedKakaoQuota(){
         _sharedKakaoQuota[i] = snap.val() || 0;
         App.renderKakaoQuota();
       });
+    });
+  }).catch(()=>{});
+}
+
+// TMAP 길찾기(경로) 쿼터는 기존엔 localStorage에만 저장돼서, 브라우저(기기)를 바꾸거나
+// 캐시를 지우면 "이 브라우저 기준"으로 카운트가 0부터 다시 시작함. 하지만 실제로는
+// 내장 공용 TMAP_APP_KEY_DEFAULT 하나를 여러 사용자가 나눠 쓰기 때문에, TMAP 콘솔에서
+// 보는 실사용량은 이미 소진돼도 이 화면에는 반영이 안 되는 문제가 있었음.
+// → 카카오 쿼터와 동일한 방식으로 파이어베이스에 공유 카운터를 추가해서, "내장 공용 키"를
+// 쓰는 사용자들끼리는 실시간으로 같은 카운트를 보게 함(개인 키를 직접 입력한 사용자는
+// 공유 카운터와 무관하게 로컬 카운트만 사용).
+function bumpSharedTmapRouteQuota(){
+  if(!isFirebaseConfigured()) return;
+  if(isUsingTmapUserKey()) return; // 개인 키 사용자는 공유 카운터에 반영하지 않음
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    db.ref(`tmapRouteQuotaShared/${todayKeyKST()}`).transaction(current=>(current||0)+1).catch(()=>{});
+  }).catch(()=>{});
+}
+let _sharedTmapRouteQuota = null;
+function subscribeSharedTmapRouteQuota(){
+  if(!isFirebaseConfigured()) return;
+  ensureFirebaseReady().then(db=>{
+    if(!db) return;
+    db.ref(`tmapRouteQuotaShared/${todayKeyKST()}`).on('value', snap=>{
+      _sharedTmapRouteQuota = snap.val() || 0;
+      App.renderKakaoQuota();
     });
   }).catch(()=>{});
 }
@@ -1056,6 +1123,13 @@ const App = {
     this.renderManualAddCard();
     this.renderKakaoQuota();
     subscribeSharedKakaoQuota();
+    subscribeSharedTmapRouteQuota();
+    document.addEventListener('click', (e)=>{
+      if(!e.target.closest('#parcelSearchInput') && !e.target.closest('#parcelSearchResults')){
+        const box = document.getElementById('parcelSearchResults');
+        if(box) box.classList.add('hidden');
+      }
+    });
     window.addEventListener('scroll', ()=>this.updateFabScrollIcon(), {passive:true});
     this.updateFabScrollIcon();
   },
@@ -1773,6 +1847,65 @@ const App = {
     if(p) p.done = val;
     this.renderRoute();
   },
+
+  // ---------- 필지 검색(주소·지번) → 바로 이동 ----------
+  parcelSearchMatches(q){
+    const qLower = q.trim().toLowerCase();
+    if(!qLower) return [];
+    return this.parcels.filter(p=>
+      (p.addr && p.addr.toLowerCase().includes(qLower)) ||
+      (p.jibun && String(p.jibun).toLowerCase().includes(qLower))
+    ).slice(0, 8);
+  },
+  onParcelSearchInput(){
+    const input = document.getElementById('parcelSearchInput');
+    const clearBtn = document.getElementById('parcelSearchClearBtn');
+    const box = document.getElementById('parcelSearchResults');
+    const q = input.value || '';
+    clearBtn.classList.toggle('hidden', q.trim().length===0);
+    if(!q.trim()){ box.classList.add('hidden'); box.innerHTML=''; return; }
+    const matches = this.parcelSearchMatches(q);
+    if(matches.length===0){
+      box.innerHTML = `<div class="search-result-empty">일치하는 필지가 없어요</div>`;
+      box.classList.remove('hidden');
+      return;
+    }
+    box.innerHTML = matches.map(p=>{
+      const vname = (this.villages[p.villageKey] && this.villages[p.villageKey].name) || p.villageName || '';
+      return `<div class="search-result-row" onclick="App.jumpToParcel(${p.id})">
+        <div class="sr-addr">${p.addr}${p.done ? '<span class="sr-done">완료</span>' : ''}</div>
+        <div class="sr-sub">${p.jibun ? '지번 '+p.jibun+' · ' : ''}${vname}</div>
+      </div>`;
+    }).join('');
+    box.classList.remove('hidden');
+  },
+  jumpToFirstParcelMatch(){
+    const input = document.getElementById('parcelSearchInput');
+    const matches = this.parcelSearchMatches(input.value || '');
+    if(matches.length>0) this.jumpToParcel(matches[0].id);
+  },
+  clearParcelSearch(){
+    const input = document.getElementById('parcelSearchInput');
+    input.value = '';
+    document.getElementById('parcelSearchClearBtn').classList.add('hidden');
+    document.getElementById('parcelSearchResults').classList.add('hidden');
+    input.focus();
+  },
+  jumpToParcel(parcelId){
+    const p = this.parcels.find(x=>x.id===parcelId);
+    if(!p) return;
+    const v = this.villages[p.villageKey];
+    if(v) v.collapsed = false; // 접혀 있던 마을이면 펼쳐서 보여줌
+    this.clearParcelSearch();
+    this.renderRoute();
+    setTimeout(()=>{
+      const el = document.querySelector(`#routeList [data-drag-id="${p.id}"]`);
+      if(!el) return;
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      el.classList.add('row-flash');
+      setTimeout(()=> el.classList.remove('row-flash'), 1500);
+    }, 50);
+  },
   moveVillage(idx, dir){
     const newIdx = idx+dir;
     if(newIdx<0 || newIdx>=this.villageOrder.length) return;
@@ -1901,6 +2034,10 @@ const App = {
     const v = this.villages[key];
     if(!v) return;
     v.mapHidden = !v.mapHidden;
+    this.renderMapMarkers();
+  },
+  setAllVillagesMapVisible(visible){
+    this.villageOrder.forEach(k=>{ this.villages[k].mapHidden = !visible; });
     this.renderMapMarkers();
   },
 
@@ -2139,7 +2276,10 @@ const App = {
     const key = loadTmapAppKey();
     if(!isTmapKeyConfigured(key)) return {error:'no-key'};
     const q = loadTmapRouteQuota();
-    if(q.count >= TMAP_ROUTE_SWITCH_THRESHOLD){
+    // 내장 공용 키를 쓰는 경우, 이 브라우저의 로컬 카운트뿐 아니라 다른 사용자들과
+    // 합산되는 공유 카운터도 함께 확인해야 실제 소진 여부를 정확히 알 수 있음.
+    const sharedCount = (!isUsingTmapUserKey() && _sharedTmapRouteQuota !== null) ? _sharedTmapRouteQuota : 0;
+    if(q.count >= TMAP_ROUTE_SWITCH_THRESHOLD || sharedCount >= TMAP_ROUTE_SWITCH_THRESHOLD){
       return {error:'quota-exceeded'};
     }
     const origin = points[0];
@@ -2214,6 +2354,7 @@ const App = {
       });
       if(path.length<2 || !summary) return {error:'no-route'};
       bumpTmapRouteQuota();
+      bumpSharedTmapRouteQuota();
       this.renderKakaoQuota();
       return {
         ok:true,
@@ -2350,6 +2491,8 @@ const App = {
     const showRouteLine = document.getElementById('mapShowRouteLine').checked;
     const showNavRouteBox = document.getElementById('mapShowNavRoute');
     const showNavRoute = showNavRouteBox ? showNavRouteBox.checked : false;
+    const statusFilterEl = document.getElementById('mapStatusFilter');
+    const statusFilter = statusFilterEl ? statusFilterEl.value : 'all';
 
     const colorMap = villageColorMap(this.villageOrder);
 
@@ -2404,6 +2547,8 @@ const App = {
     if(showParcels){
       parcelList.forEach((p,i)=>{
         if(!p.coord) return;
+        if(statusFilter==='undone' && p.done) return;
+        if(statusFilter==='done' && !p.done) return;
         const pv = this.villages[p.villageKey];
         if(pv && pv.mapHidden) return;
         const pos = new kakao.maps.LatLng(p.coord.lat, p.coord.lng);
@@ -2440,13 +2585,16 @@ const App = {
         ).join('');
         legendEl.classList.remove('hidden');
         document.getElementById('mapLegendHint').classList.remove('hidden');
+        document.getElementById('mapLegendActions').classList.remove('hidden');
       } else {
         legendEl.classList.add('hidden');
         document.getElementById('mapLegendHint').classList.add('hidden');
+        document.getElementById('mapLegendActions').classList.add('hidden');
       }
     } else {
       legendEl.classList.add('hidden');
       document.getElementById('mapLegendHint').classList.add('hidden');
+      document.getElementById('mapLegendActions').classList.add('hidden');
     }
 
     const routeStatusEl = document.getElementById('routeLineStatus');
@@ -2690,10 +2838,18 @@ const App = {
     if(navBox){
       if(!isTmapKeyConfigured(loadTmapAppKey())){
         navBox.textContent = '길찾기 API 키가 설정되지 않았어요.';
-      } else {
+      } else if(isUsingTmapUserKey()){
+        // 개인 키는 공유 카운터와 무관 — 이 브라우저에서 쓴 만큼만 로컬로 집계.
         const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - loadTmapRouteQuota().count);
-        const keySrc = isUsingTmapUserKey() ? '내가 입력한 키' : '내장 공용 키';
-        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (${keySrc})`;
+        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내가 입력한 키)`;
+      } else if(isFirebaseConfigured() && _sharedTmapRouteQuota !== null){
+        // 내장 공용 키: 파이어베이스 공유 카운터 기준(다른 사용자 사용량 포함, 실시간 반영).
+        const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - _sharedTmapRouteQuota);
+        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내장 공용 키 · 전체 사용자 합산)`;
+      } else {
+        // 파이어베이스 미설정이거나 아직 값을 못 받아왔을 때는 이 브라우저 기준 값으로 대체 표시.
+        const remain = Math.max(0, TMAP_ROUTE_DAILY_LIMIT - loadTmapRouteQuota().count);
+        navBox.textContent = `오늘 남은 길찾기 ${remain.toLocaleString()}건 (내장 공용 키 · 이 브라우저 기준, 다른 사용자 사용량 미반영)`;
       }
     }
   },
