@@ -206,6 +206,18 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   }
   .parcel-row.row-flash{animation:rowFlash 1.4s ease-out;}
 
+  .resume-toast{
+    position:fixed;left:16px;right:16px;bottom:96px;z-index:60;
+    background:var(--accent-dark);color:#fff;border-radius:12px;padding:12px 14px;
+    font-size:13px;line-height:1.5;box-shadow:0 6px 18px rgba(0,0,0,0.25);
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;max-width:640px;margin:0 auto;
+  }
+  .resume-toast button{
+    border:1px solid rgba(255,255,255,0.5);background:transparent;color:#fff;
+    border-radius:100px;padding:5px 11px;font-size:12px;font-weight:600;flex-shrink:0;
+  }
+  .resume-toast button.rt-close{border:none;padding:4px 6px;margin-left:auto;font-size:14px;}
+
   [data-drag-id]{touch-action:pan-y;}
   [data-drag-id].dragging{touch-action:none;opacity:.55;box-shadow:0 8px 20px rgba(0,0,0,.18);position:relative;z-index:6;cursor:grabbing;}
   body.drag-active, body.drag-active *{user-select:none !important;-webkit-user-select:none !important;}
@@ -727,6 +739,13 @@ function twoOptImprovePathOrder(pts, fixFirst, timeBudgetMs){
 
 const GEOCODE_PROVIDER = 'kakao';
 
+// ---------- 작업 중 자동 저장(새로고침 대비) ----------
+// localStorage가 아니라 sessionStorage를 씀: 새로고침/실수로 탭이 죽어도 데이터가
+// 남아있지만(같은 탭 세션 안에서는 유지), 탭/창을 완전히 닫으면 브라우저가 알아서
+// 지워줘서 따로 "데이터 정리"를 신경 쓸 필요가 없음.
+const SESSION_STORAGE_KEY = 'frp_session_v1';
+const SESSION_SAVE_DEBOUNCE_MS = 400;
+
 const KAKAO_APP_KEYS = ['3cee8237a39ce9a6fd5e6679220f48ba', 'YOUR_KAKAO_JS_APP_KEY_2'];
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyDNUFDQHnVFxCCEk1iHb17_hQCjG_t6V4E",
@@ -1132,9 +1151,110 @@ const App = {
     });
     window.addEventListener('scroll', ()=>this.updateFabScrollIcon(), {passive:true});
     this.updateFabScrollIcon();
+    window.addEventListener('beforeunload', ()=>{ this.persistSession(true); });
+    this.restoreSession();
   },
 
+  // ---------- 작업 중 자동 저장/복원 ----------
+  // sessionStorage에 저장하므로 새로고침해도 남아있지만, 탭/창을 닫으면 브라우저가
+  // 자동으로 지워줌(따로 "초기화" 버튼을 안 눌러도 됨).
+  persistSession(immediate){
+    if(immediate){
+      if(this._sessionSaveTimer){ clearTimeout(this._sessionSaveTimer); this._sessionSaveTimer = null; }
+      this._doPersistSession();
+      return;
+    }
+    if(this._sessionSaveTimer) clearTimeout(this._sessionSaveTimer);
+    this._sessionSaveTimer = setTimeout(()=> this._doPersistSession(), SESSION_SAVE_DEBOUNCE_MS);
+  },
+  _doPersistSession(){
+    if(!this.parcels || this.parcels.length===0){ return; }
+    try{
+      const snapshot = {
+        v: 1,
+        savedAt: Date.now(),
+        fileName: this.fileName,
+        colMap: this.colMap,
+        villages: this.villages,
+        villageOrder: this.villageOrder,
+        routeMode: this.routeMode,
+        flatOrder: this.flatOrder,
+        startPoint: this.startPoint,
+        jibunSortDir: this.jibunSortDir,
+        parcelCoordCache: this.parcelCoordCache,
+        screen: this._currentScreen
+      };
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(snapshot));
+    }catch(e){ /* 용량 초과 등은 치명적이지 않으니 조용히 무시 */ }
+  },
+  clearSession(){
+    if(this._sessionSaveTimer){ clearTimeout(this._sessionSaveTimer); this._sessionSaveTimer = null; }
+    try{ sessionStorage.removeItem(SESSION_STORAGE_KEY); }catch(e){ /* non-fatal */ }
+  },
+  restoreSession(){
+    let raw = null;
+    try{ raw = sessionStorage.getItem(SESSION_STORAGE_KEY); }catch(e){ return; }
+    if(!raw) return;
+    let snap = null;
+    try{ snap = JSON.parse(raw); }catch(e){ return; }
+    if(!snap || !snap.villages || Object.keys(snap.villages).length===0) return;
+
+    this.fileName = snap.fileName || '';
+    this.colMap = snap.colMap || this.colMap;
+    this.villages = snap.villages;
+    this.villageOrder = snap.villageOrder || [];
+    this.routeMode = snap.routeMode || 'village';
+    this.flatOrder = snap.flatOrder || [];
+    this.startPoint = snap.startPoint || null;
+    this.jibunSortDir = snap.jibunSortDir || 'asc';
+    this.parcelCoordCache = snap.parcelCoordCache || {};
+
+    // this.parcels는 villages[key].parcels와 같은 객체를 참조해야 완료 체크 등이
+    // 양쪽 모두에 반영됨 — villages를 원본으로 삼아 다시 이어붙임.
+    const parcels = [];
+    Object.keys(this.villages).forEach(k=>{
+      (this.villages[k].parcels||[]).forEach(p=> parcels.push(p));
+    });
+    this.parcels = parcels;
+
+    if(this.villageOrder.length > 0){
+      this.renderRoute();
+      if(snap.screen==='map'){
+        this.openMapScreen();
+      } else {
+        this.goScreen('route');
+      }
+    } else {
+      this.renderVillageList();
+      this.goScreen('select');
+    }
+    this.showResumeToast();
+  },
+  showResumeToast(){
+    const el = document.createElement('div');
+    el.className = 'resume-toast';
+    el.innerHTML = `이전에 작업하던 내용을 이어서 불러왔어요.
+      <button type="button" onclick="App.discardSessionAndRestart()">새로 시작하기</button>
+      <button type="button" class="rt-close" onclick="this.parentElement.remove()">✕</button>`;
+    document.body.appendChild(el);
+    setTimeout(()=>{ if(el.parentElement) el.remove(); }, 8000);
+  },
+  discardSessionAndRestart(){
+    if(!confirm('지금까지 작업한 내용을 지우고 새로 시작할까요?')) return;
+    this.clearSession();
+    location.reload();
+  },
+
+
   handleFile(file){
+    if(this.parcels && this.parcels.length>0){
+      const hasProgress = this.parcels.some(p=>p.done) || this.villageOrder.length>0;
+      const msg = hasProgress
+        ? '지금까지 작업/체크한 내용이 있어요. 새 파일을 올리면 그 내용은 사라져요. 계속할까요?'
+        : '이전에 불러온 필지 목록이 있어요. 새 파일을 올리면 대체돼요. 계속할까요?';
+      if(!confirm(msg)) return;
+    }
+    this.clearSession();
     this.fileName = file.name.replace(/\.[^.]+$/,'');
     const reader = new FileReader();
     reader.onload = (e)=>{
@@ -1329,6 +1449,7 @@ const App = {
     this.buildParcels();
     this.renderVillageList();
     this.goScreen('select');
+    this.persistSession();
   },
 
   buildParcels(){
@@ -1525,6 +1646,7 @@ const App = {
     this.buildParcelsFromManual();
     this.renderVillageList();
     this.goScreen('select');
+    this.persistSession();
   },
 
   goScreen(name){
@@ -1723,11 +1845,13 @@ const App = {
             <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
           </div>
         `).join('') + `</div></div>`;
+      this.persistSession();
       return;
     }
 
     if(this.flatOrder && this.flatOrder.length>0){
       list.innerHTML = this.viewSwitchHtml() + this.renderGroupedFlatHtml();
+      this.persistSession();
       return;
     }
 
@@ -1772,6 +1896,7 @@ const App = {
           ${parcelsHtml}
         </div>`;
     }).join('');
+    this.persistSession();
   },
 
   groupedFlatByVillage(){
