@@ -148,7 +148,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     font-size:13px;font-weight:600;text-align:center;
   }
   .gps-btn.active{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft);}
-  .gps-status{font-size:11.5px;color:var(--text-mute);text-align:center;margin:-8px 0 14px;font-family:var(--mono);}
+  .gps-status{font-size:11.5px;color:var(--text-mute);text-align:center;margin:-8px 0 14px;font-family:var(--mono);white-space:pre-line;}
 
   .village-group{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden;}
   .vg-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;}
@@ -198,6 +198,18 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .warn-badge{background:var(--warn-soft);color:var(--warn);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:100px;margin-left:6px;}
 
   .gearbtn{background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:8px;width:30px;height:30px;font-size:14px;flex-shrink:0;}
+  .inquirybtn{
+    display:flex;align-items:center;gap:5px;background:#fff;color:var(--accent-dark);
+    border:none;border-radius:100px;height:30px;padding:0 12px;font-size:12.5px;font-weight:700;
+    flex-shrink:0;box-shadow:0 0 0 2px rgba(255,255,255,0.35);
+  }
+  .quotabadge{
+    display:inline-flex;align-items:center;gap:4px;font-size:12px;font-weight:700;
+    background:rgba(255,255,255,0.22);color:#fff;padding:5px 11px;border-radius:100px;
+    font-family:var(--mono);border:1px solid rgba(255,255,255,0.3);
+  }
+  .quotabadge.low{background:#F3A712;color:#3A2A00;border-color:#F3A712;}
+  .quotabadge.critical{background:var(--warn);color:#fff;border-color:var(--warn);}
 
   .fab-stack{
     position:fixed;right:16px;bottom:20px;z-index:25;display:flex;flex-direction:column;gap:10px;
@@ -267,7 +279,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-select-chips .ns-empty{font-size:12.5px;color:var(--text-mute);}
   .nav-route-summary{font-size:12.5px;color:var(--text);background:var(--accent-soft);border-radius:8px;
     padding:8px 10px;margin-top:8px;line-height:1.5;}
-  .topbar-right{display:flex;align-items:center;gap:8px;}
+  .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
   .modal{position:fixed;inset:0;background:rgba(20,24,19,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal-card{background:#fff;border-radius:16px 16px 0 0;padding:20px 18px 28px;width:100%;max-width:640px;max-height:82vh;overflow-y:auto;}
   .modal-card h3{margin-bottom:4px;font-size:16px;}
@@ -338,8 +350,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div class="topbar">
   <div class="brand"><b>현장조사 동선 정리</b><span id="topbarSub">FIELD ROUTE</span></div>
   <div class="topbar-right">
-    <button class="gearbtn" onclick="App.openInquiry()" title="문의하기">💬</button>
-    <span id="quotaBadge" style="font-size:11px;background:rgba(255,255,255,0.12);padding:4px 9px;border-radius:100px;font-family:var(--mono);"></span>
+    <button class="inquirybtn" onclick="App.openInquiry()" title="문의하기">💬 문의</button>
+    <span id="quotaBadge" class="quotabadge">📊 조회량 확인중…</span>
     <button class="gearbtn" onclick="App.openSettings()" title="설정">⚙</button>
     <div class="step" id="stepBadge">업로드</div>
   </div>
@@ -747,8 +759,8 @@ let _kakaoSdkLoadPromise = null;
 let _kakaoMap = null;
 let _kakaoMapMarkers = [];
 let _kakaoRoutePolyline = null;
-let _kakaoNavRoutePolyline = null;
-let _kakaoNavRouteHaloPolyline = null;
+let _kakaoNavRoutePolylines = [];     // 실선/점선 구간별 폴리라인(본선) 배열
+let _kakaoNavRouteHaloPolylines = [];  // 위 폴리라인들의 흰 테두리(halo) 배열
 let _kakaoNavRouteMarkers = [];
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
@@ -1967,8 +1979,12 @@ const App = {
     if(statusEl){
       if(this._lastNavRoute){
         const r = this._lastNavRoute;
-        statusEl.textContent = `🚗 실제 도로 기준 약 ${r.distanceKm}km · ${r.durationMin}분` +
+        let txt = `🚗 실제 도로 기준 약 ${r.distanceKm}km · ${r.durationMin}분` +
           (r.hasWaypoints ? ' (경유지 포함)' : ' (직행)');
+        if(r.fallbackDescs && r.fallbackDescs.length){
+          txt += `\n⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${r.fallbackDescs.join(', ')}`;
+        }
+        statusEl.textContent = txt;
       } else if(pts.length===1){
         statusEl.textContent = '핀을 1개 더 선택하면 경로를 계산할 수 있어요.';
       } else {
@@ -1993,8 +2009,7 @@ const App = {
       const msgMap = {
         'no-key':'설정된 길찾기 API 키가 없어요.',
         'quota-exceeded':'오늘 길찾기 API 사용량을 다 썼어요. 내일 다시 시도하거나 관리자에게 문의해주세요.',
-        'no-route':'차로 갈 수 있는 길을 못 찾았어요. 다른 핀으로 다시 시도해보세요.',
-        'straight-fallback':'경유지 하나가 도로에서 너무 멀어요(산·임야 등). 그 지점을 빼거나 다른 위치로 바꿔보세요.'
+        'no-route':'차로 갈 수 있는 길을 못 찾았어요. 다른 핀으로 다시 시도해보세요.'
       };
       alert(msgMap[r.error] || `경로 계산에 실패했어요 (${r.error || '알 수 없는 오류'}).`);
       this.renderNavSelectPanel();
@@ -2003,13 +2018,15 @@ const App = {
     this._lastNavRoute = {
       distanceKm:r.distanceKm, durationMin:r.durationMin, hasWaypoints: pts.length>2,
       path: r.path,
+      segments: r.segments,
+      fallbackDescs: r.fallbackDescs || [],
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
     this.clearNavRoutePolylineOnly();
     const showBox = document.getElementById('mapShowNavRoute');
     if(showBox){ showBox.disabled = false; }
     if(!showBox || showBox.checked){
-      this.drawNavRoutePolyline(r.path);
+      this.drawNavRoutePolyline(r.segments);
       this.renderNavRouteVisuals();
       const bounds = new kakao.maps.LatLngBounds();
       r.path.forEach(p=>bounds.extend(p));
@@ -2018,24 +2035,37 @@ const App = {
     this.renderNavSelectPanel();
   },
 
-  // 길찾기 도로 폴리라인을 흰 테두리(halo) + 빨간 본선 두 겹으로 그림.
+  // 길찾기 도로 폴리라인을 흰 테두리(halo) + 본선 두 겹으로 그림.
   // 유턴 등으로 선이 겹칠 때, 얇은 본선만 있으면 구분이 안 되는 문제를 흰 테두리로 보완.
-  drawNavRoutePolyline(path){
+  // segments: [{path:[LatLng,...], isFallback:bool}, ...] — isFallback 구간은 실제 도로
+  // 데이터가 없어 시작~끝을 직선으로 이은 구간이라, 점선 + 다른 색으로 구분해서 그림.
+  drawNavRoutePolyline(segments){
     this.clearNavRoutePolylineOnly();
-    _kakaoNavRouteHaloPolyline = new kakao.maps.Polyline({
-      path, strokeWeight: 7, strokeColor: '#ffffff',
-      strokeOpacity: 0.95, strokeStyle: 'solid'
+    if(!segments || !segments.length) return;
+    segments.forEach(seg=>{
+      const path = seg.path;
+      if(!path || path.length<2) return;
+      const mainColor = seg.isFallback ? '#e67e22' : '#c0392b';
+      const style = seg.isFallback ? 'shortdash' : 'solid';
+      const halo = new kakao.maps.Polyline({
+        path, strokeWeight: 7, strokeColor: '#ffffff',
+        strokeOpacity: 0.95, strokeStyle: style
+      });
+      halo.setMap(_kakaoMap);
+      _kakaoNavRouteHaloPolylines.push(halo);
+      const main = new kakao.maps.Polyline({
+        path, strokeWeight: 3.5, strokeColor: mainColor,
+        strokeOpacity: 0.95, strokeStyle: style
+      });
+      main.setMap(_kakaoMap);
+      _kakaoNavRoutePolylines.push(main);
     });
-    _kakaoNavRouteHaloPolyline.setMap(_kakaoMap);
-    _kakaoNavRoutePolyline = new kakao.maps.Polyline({
-      path, strokeWeight: 3.5, strokeColor: '#c0392b',
-      strokeOpacity: 0.95, strokeStyle: 'solid'
-    });
-    _kakaoNavRoutePolyline.setMap(_kakaoMap);
   },
   clearNavRoutePolylineOnly(){
-    if(_kakaoNavRoutePolyline){ _kakaoNavRoutePolyline.setMap(null); _kakaoNavRoutePolyline = null; }
-    if(_kakaoNavRouteHaloPolyline){ _kakaoNavRouteHaloPolyline.setMap(null); _kakaoNavRouteHaloPolyline = null; }
+    _kakaoNavRoutePolylines.forEach(p=>p.setMap(null));
+    _kakaoNavRoutePolylines = [];
+    _kakaoNavRouteHaloPolylines.forEach(p=>p.setMap(null));
+    _kakaoNavRouteHaloPolylines = [];
   },
 
   // 길찾기 경로에 출발/경유/도착 마커와 진행 방향 화살표를 그림.
@@ -2143,37 +2173,55 @@ const App = {
       // 첫 Point 피처(properties.totalDistance/totalTime)가 경로 요약, 나머지 LineString이 실제 경로 좌표
       const summary = features.find(f=> f.geometry && f.geometry.type==='Point' && f.properties && (f.properties.totalDistance || f.properties.totalTime));
       const path = [];
-      let hasStraightFallback = false;
+      const segments = []; // [{path:[LatLng,...], isFallback:bool}, ...] — 그리기용, 도로 구간과 직선 대체 구간을 구분
+      const fallbackDescs = [];
+      // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
+      // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음. 이런 구간은 실패 처리해서
+      // 막지 않고, 지도에는 점선으로 표시하고 어느 지점 근처인지 이름을 안내함.
+      // 판별: "시작~끝 직선거리(chord)"와 "점들을 실제로 따라간 거리(walked)"가 거의 같으면
+      // (=꺾이지 않고 쭉 뻗음) + 그 거리가 300m 넘으면, 도로가 아니라 직선으로 대체된 구간으로 간주.
       features.forEach(f=>{
         if(f.geometry && f.geometry.type==='LineString'){
           const coords = f.geometry.coordinates || [];
-          // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
-          // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음.
-          // → "시작~끝 직선거리"와 "점들을 실제로 따라간 거리"가 거의 같으면(=꺾이지 않고 쭉 뻗음)
-          //   + 그 거리가 300m 넘으면, 도로가 아니라 직선으로 대체된 구간으로 간주.
-          if(coords.length>=2){
-            const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
-            const chord = haversineMeters(lat1,lng1,lat2,lng2);
-            let walked = 0;
-            for(let i=1;i<coords.length;i++){
-              walked += haversineMeters(coords[i-1][1],coords[i-1][0], coords[i][1],coords[i][0]);
-            }
-            if(chord > 300 && walked > 0 && (walked/chord) < 1.03){
-              hasStraightFallback = true;
-            }
+          if(coords.length<2) return;
+          const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
+          const chord = haversineMeters(lat1,lng1,lat2,lng2);
+          let walked = 0;
+          for(let i=1;i<coords.length;i++){
+            walked += haversineMeters(coords[i-1][1],coords[i-1][0], coords[i][1],coords[i][0]);
+          }
+          const isFallback = chord > 300 && walked > 0 && (walked/chord) < 1.03;
+          const segPath = coords.map(c=> new kakao.maps.LatLng(c[1], c[0]));
+          segments.push({path: segPath, isFallback});
+          if(isFallback){
+            // 이 직선 구간의 양 끝점과 가장 가까운 원래 선택 지점(출발/경유/도착) 이름을 찾아 안내 문구 생성.
+            // (도로에서 멀어서 직선으로 대체된 구간은 보통 선택 지점 사이 구간 전체가 그대로 옴)
+            const nearName = (lat,lng)=>{
+              let best=null, bestDist=Infinity;
+              points.forEach(p=>{
+                const d = haversineMeters(lat,lng,p.lat,p.lng);
+                if(d<bestDist){ bestDist=d; best=p; }
+              });
+              return best ? best.name : null;
+            };
+            const nameA = nearName(lat1,lng1);
+            const nameB = nearName(lat2,lng2);
+            const desc = (nameA && nameB && nameA!==nameB) ? `${nameA}↔${nameB}` : (nameA || nameB || '알 수 없는 구간');
+            if(!fallbackDescs.includes(desc)) fallbackDescs.push(desc);
           }
           coords.forEach(c=> path.push(new kakao.maps.LatLng(c[1], c[0])));
         }
       });
       if(path.length<2 || !summary) return {error:'no-route'};
-      if(hasStraightFallback) return {error:'straight-fallback'};
       bumpTmapRouteQuota();
       this.renderKakaoQuota();
       return {
         ok:true,
         distanceKm: Math.round((summary.properties.totalDistance/1000)*10)/10,
         durationMin: Math.round(summary.properties.totalTime/60),
-        path
+        path,
+        segments,
+        fallbackDescs
       };
     }catch(e){
       return {error:'network', message:String(e)};
@@ -2426,17 +2474,17 @@ const App = {
     }
 
     // 🛣️ 선택 구간 길찾기(도로) 폴리라인 — 위 ➰ 직선 순서선(_kakaoRoutePolyline)과는
-    // 완전히 독립된 변수(_kakaoNavRoutePolyline)와 체크박스(mapShowNavRoute)로 관리하므로
+    // 완전히 독립된 변수(_kakaoNavRoutePolylines)와 체크박스(mapShowNavRoute)로 관리하므로
     // 둘 다 켜면 동시에, 하나만 켜면 그것만 지도에 보임. 체크박스를 끄면 지우고, 다시
     // 켜면(그리고 계산된 경로가 있으면) 다시 그림 — API를 재호출하지 않음.
-    if(!showNavRoute && _kakaoNavRoutePolyline){
+    if(!showNavRoute && _kakaoNavRoutePolylines.length){
       this.clearNavRoutePolylineOnly();
       this.clearNavRouteVisuals();
-    } else if(showNavRoute && !_kakaoNavRoutePolyline && this._lastNavRoute && this._lastNavRoute.path){
-      this.drawNavRoutePolyline(this._lastNavRoute.path);
+    } else if(showNavRoute && !_kakaoNavRoutePolylines.length && this._lastNavRoute && this._lastNavRoute.segments){
+      this.drawNavRoutePolyline(this._lastNavRoute.segments);
       this.renderNavRouteVisuals();
     }
-    if(_kakaoNavRoutePolyline) any = true;
+    if(_kakaoNavRoutePolylines.length) any = true;
 
     if(any) _kakaoMap.setBounds(bounds);
   },
@@ -2616,6 +2664,8 @@ const App = {
   },
   renderKakaoQuota(){
     const useShared = isFirebaseConfigured();
+    const configuredKeyCount = KAKAO_APP_KEYS.filter(isKakaoKeyConfigured).length;
+    const totalLimit = configuredKeyCount * KAKAO_DAILY_LIMIT;
     const remain = KAKAO_APP_KEYS.reduce((sum, key, i)=>{
       if(!isKakaoKeyConfigured(key)) return sum;
       const used = useShared && _sharedKakaoQuota[i] !== undefined
@@ -2627,7 +2677,13 @@ const App = {
     const box = document.getElementById('kakaoQuotaBox');
     const badge = document.getElementById('quotaBadge');
     if(box) box.textContent = text;
-    if(badge) badge.textContent = text;
+    if(badge){
+      badge.textContent = `📊 ${text}`;
+      const ratio = totalLimit>0 ? remain/totalLimit : 1;
+      badge.classList.remove('low','critical');
+      if(totalLimit>0 && ratio < 0.05) badge.classList.add('critical');
+      else if(totalLimit>0 && ratio < 0.2) badge.classList.add('low');
+    }
 
     // 길찾기(TMAP) 쿼터 — 단일 버킷. 키가 아예 없으면(내장 기본값도 미설정) 안내 문구만 표시.
     const navBox = document.getElementById('kakaoNavQuotaBox');
