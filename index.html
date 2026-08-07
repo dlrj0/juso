@@ -614,6 +614,45 @@ function haversine(lat1,lng1,lat2,lng2){
   return R*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a));
 }
 
+// 최근접 이웃 알고리즘이 만든 경로에 남는 "교차/막판에 되돌아가기" 구간을 없애는 2-opt 국소탐색.
+// pts: [{lat,lng}, ...] 방문 순서대로 나열된 좌표 배열(직선 경로 기준).
+// fixFirst: true면 pts[0]은 항상 첫 자리에 고정한다(실제 출발지가 있는 경우처럼, 시작점만은
+//           바뀌면 안 될 때 사용). 마지막 지점은 항상 자유롭게 바뀔 수 있다 — "막판에 놓쳤다가
+//           마지막에 주우러 가는" 패턴을 없애려면 끝점이 고정돼 있으면 안 되기 때문.
+// 반환값: pts의 인덱스를 재배열한 배열(개선된 순서). pts 자체는 변경하지 않는다.
+function twoOptImprovePathOrder(pts, fixFirst, timeBudgetMs){
+  const n = pts.length;
+  let order = pts.map((_,i)=>i);
+  if(n < 4) return order; // 점이 3개 이하면 교차가 생길 수 없어 손댈 필요가 없음
+
+  const dist = (idxA, idxB)=> haversine(pts[idxA].lat, pts[idxA].lng, pts[idxB].lat, pts[idxB].lng);
+  const deadline = Date.now() + (timeBudgetMs || 1500); // 필지가 아주 많아도 화면이 멈추지 않도록 시간 제한
+  const lo = fixFirst ? 1 : 0; // fixFirst일 땐 0번 자리(시작점)는 재배열 대상에서 제외
+
+  let improved = true;
+  while(improved){
+    improved = false;
+    for(let i=lo; i<n-1; i++){
+      if(Date.now() > deadline){ improved = false; break; }
+      for(let j=i+1; j<n; j++){
+        // [i..j] 구간을 뒤집었을 때 총 이동거리가 줄어드는지 계산.
+        // i가 0이면 "앞쪽 변"이, j가 n-1이면 "뒤쪽 변"이 애초에 없는 경우이므로 0으로 처리.
+        const before = i>0 ? dist(order[i-1], order[i]) : 0;
+        const after  = j<n-1 ? dist(order[j], order[j+1]) : 0;
+        const newBefore = i>0 ? dist(order[i-1], order[j]) : 0;
+        const newAfter  = j<n-1 ? dist(order[i], order[j+1]) : 0;
+        if(newBefore + newAfter < before + after - 1e-9){
+          // order[i..j] 구간을 뒤집어서 교차를 풀고 더 짧은 경로로 교체
+          let a=i, b=j;
+          while(a<b){ const t=order[a]; order[a]=order[b]; order[b]=t; a++; b--; }
+          improved = true;
+        }
+      }
+    }
+  }
+  return order;
+}
+
 const GEOCODE_PROVIDER = 'kakao';
 
 const KAKAO_APP_KEYS = ['3cee8237a39ce9a6fd5e6679220f48ba', 'YOUR_KAKAO_JS_APP_KEY_2'];
@@ -2793,7 +2832,17 @@ const App = {
       ordered.push(chosen);
       cur = chosen.coord;
     }
-    this.flatOrder = [...ordered, ...withoutCoord].map(p=>p.id);
+
+    // 최근접 이웃 방식은 매 순간 제일 가까운 필지만 고르기 때문에, 멀리 떨어진 필지 하나가
+    // 계속 뒤로 밀리다가 맨 마지막에야 선택되면서 왔던 길을 가로질러 되돌아가는 구간(교차선)이
+    // 생길 수 있다. 2-opt로 그렇게 교차되는 구간을 찾아 순서를 다듬어 준다.
+    // useStartPoint(실제 출발지)가 있을 때만 첫 자리를 고정하고, 그 외엔 끝점까지 자유롭게 바뀔 수
+    // 있게 해서 "막판에 놓친 필지 주우러 가기" 패턴 자체를 없앤다.
+    const fixFirst = !!useStartPoint;
+    const optOrder = twoOptImprovePathOrder(ordered.map(p=>p.coord), fixFirst);
+    const improved = optOrder.map(i=>ordered[i]);
+
+    this.flatOrder = [...improved, ...withoutCoord].map(p=>p.id);
     this.routeMode = 'flat';
     this.renderRoute();
   },
