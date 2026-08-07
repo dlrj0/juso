@@ -24,6 +24,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     --accent-soft:#E3EAE1;
     --warn:#A8432F;
     --warn-soft:#F5E2DC;
+    --emphasis:#D98A1D;
+    --emphasis-soft:#FBEAD0;
     --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
     --sans:-apple-system,BlinkMacSystemFont,"Malgun Gothic","Apple SD Gothic Neo",sans-serif;
     --topbar-h:54px;
@@ -210,6 +212,24 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .fab-btn.accent{ background:var(--accent);border-color:var(--accent);color:#fff; }
   .fab-btn.active{ background:var(--accent);border-color:var(--accent);color:#fff; }
 
+  /* 처음 쓰는 사람이 "이건 꼭 눌러야 하는구나" 바로 알 수 있게, 설명 대신 테두리 색으로만 강조 */
+  .btn-highlight{
+    border:2px solid var(--emphasis) !important;
+    box-shadow:0 0 0 3px var(--emphasis-soft);
+  }
+  .primary-btn.btn-highlight{ box-shadow:0 0 0 3px var(--emphasis-soft), 0 2px 6px rgba(0,0,0,.08); }
+
+  /* 지도 버튼은 화면을 왔다갔다 하는 내내 계속 봐야 하니, 은은하게 숨쉬듯 계속 강조 */
+  @keyframes fabPulseGlow{
+    0%  { box-shadow:0 2px 10px rgba(0,0,0,0.18), 0 0 0 0 rgba(217,138,29,0.5); }
+    70% { box-shadow:0 2px 10px rgba(0,0,0,0.18), 0 0 0 9px rgba(217,138,29,0); }
+    100%{ box-shadow:0 2px 10px rgba(0,0,0,0.18), 0 0 0 0 rgba(217,138,29,0); }
+  }
+  .fab-btn.accent.btn-pulse{
+    border-color:var(--emphasis);
+    animation:fabPulseGlow 2.4s ease-out infinite;
+  }
+
   .view-switch{
     display:flex;position:relative;background:var(--surface);border:1px solid var(--border);
     border-radius:12px;padding:3px;margin-bottom:12px;gap:2px;
@@ -368,7 +388,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 8px;">체크한 열은 각 필지 아래에 같이 보이고, 엑셀로 내보낼 때도 고를 수 있어요. 처음엔 전부 선택 해제 상태예요 — 필요한 열만 직접 체크해주세요.</p>
       <div id="mappingExtraFields"></div>
     </div>
-    <button class="primary-btn" id="mappingConfirmBtn" onclick="App.confirmMapping()">필지 목록 만들기</button>
+    <button class="primary-btn btn-highlight" id="mappingConfirmBtn" onclick="App.confirmMapping()">필지 목록 만들기</button>
   </div>
 
   <!-- SCREEN 3: VILLAGE SELECT -->
@@ -405,7 +425,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div class="card" id="parcelGeoCard" style="margin-top:2px;">
       <h3 style="font-size:14.5px;margin-bottom:2px;">필지 동선 계산(필수)</h3>
       <div class="gps-row">
-        <button class="gps-btn" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
+        <button class="gps-btn btn-highlight" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
       </div>
       <div class="geo-status" id="parcelGeoStatus">필지 위치 확인 전</div>
@@ -424,8 +444,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 
       <label class="fieldlabel" style="margin-top:14px;">기준별 동선 계산(필수)</label>
       <div class="gps-row" style="margin-top:6px;">
-        <button class="gps-btn" onclick="App.computeFlatOrder(false)">필지</button>
-        <button class="gps-btn" onclick="App.computeFlatOrder(true)">출발지</button>
+        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(false)">필지</button>
+        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(true)">출발지</button>
       </div>
     </div>
 
@@ -557,7 +577,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     </svg>
   </button>
   <button class="fab-btn" id="fabScrollBtn" onclick="App.handleFabScroll()" title="스크롤 이동">▼</button>
-  <button class="fab-btn accent" id="fabScreenBtn" onclick="App.toggleScreenSwitch()" title="화면 전환">🗺️</button>
+  <button class="fab-btn accent btn-pulse" id="fabScreenBtn" onclick="App.toggleScreenSwitch()" title="화면 전환">🗺️</button>
 </div>
 
 <div class="sticky-bottom" id="stickyBottom" style="display:none;">
@@ -1513,7 +1533,7 @@ const App = {
     if(!btn){
       btn = document.createElement('button');
       btn.id = 'goRouteBtn';
-      btn.className = 'primary-btn';
+      btn.className = 'primary-btn btn-highlight';
       btn.style.marginTop = '14px';
       btn.onclick = ()=>App.buildRoute();
       document.getElementById('screen-select').appendChild(btn);
