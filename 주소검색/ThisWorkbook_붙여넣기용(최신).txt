@@ -1,0 +1,118 @@
+'==============================================================
+'  아래 코드 전체를 "ThisWorkbook" 코드 창에 붙여넣으세요.
+'  (VBA 편집기 왼쪽 프로젝트 목록에서 "ThisWorkbook" 더블클릭 → 기존 내용 전부 지우고 → 붙여넣기 → 저장)
+'
+'  [수정 사항] 파일을 열 때마다 설정 시트의 ①/②/⑤ 버튼(D4·D5·D8)이
+'  실제 하이퍼링크로 되어있는지 확인하고, 없으면 자동으로 만들어줍니다.
+'  (원본 xlsx 파일에는 이 3개 셀이 "파란색 글씨"로 보이기만 할 뿐
+'   실제 하이퍼링크 객체가 아니어서, 클릭해도 아무 반응이 없었습니다.)
+'==============================================================
+Option Explicit
+
+' 파일을 열 때 자동 실행 ? 설정 시트의 초기 3개 버튼이 살아있는지 점검/복구
+Private Sub Workbook_Open()
+    EnsureControlHyperlinks
+End Sub
+
+Private Sub EnsureControlHyperlinks()
+    Dim cfg As Worksheet
+    Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    EnsureOneHyperlink cfg, cfg.Range(BTN_SELECT_SHEET)
+    EnsureOneHyperlink cfg, cfg.Range(BTN_SELECT_WINDOW)
+    EnsureOneHyperlink cfg, cfg.Range(BTN_CREATE_BUTTONS)
+End Sub
+
+' targetCell에 하이퍼링크가 없으면(=아직 진짜 버튼이 아니면) 새로 만들어줌.
+' 이미 있으면 건드리지 않음 (중복 생성 방지)
+Private Sub EnsureOneHyperlink(ws As Worksheet, targetCell As Range)
+    If targetCell.Hyperlinks.Count = 0 Then
+        Dim displayText As String
+        displayText = targetCell.Value
+        ws.Hyperlinks.Add Anchor:=targetCell, Address:="", _
+            SubAddress:="'" & ws.Name & "'!" & targetCell.Address(False, False), _
+            TextToDisplay:=displayText
+    End If
+End Sub
+
+' 설정 시트의 버튼(하이퍼링크) 클릭 처리
+Private Sub Workbook_SheetFollowHyperlink(ByVal Sh As Object, ByVal Target As Hyperlink)
+    Dim cfg As Worksheet
+    Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    If Sh.Name = SH_SETTINGS Then
+        Select Case Target.Range.Address(False, False)
+            Case cfg.Range(BTN_SELECT_SHEET).Address(False, False)
+                SelectDataSheet
+            Case cfg.Range(BTN_SELECT_WINDOW).Address(False, False)
+                SelectMapWindow
+            Case cfg.Range(BTN_CREATE_BUTTONS).Address(False, False)
+                CreateSearchButtons
+        End Select
+    Else
+        Dim dataSheetName As String
+        dataSheetName = Trim(cfg.Range(CELL_DATASHEET).Value)
+        If dataSheetName <> "" And Sh.Name = dataSheetName Then
+            RunSearchForRow Sh, Target.Range.Row
+        End If
+    End If
+End Sub
+
+' 데이터 시트의 주소 값 변화를 실시간으로 감지해 검색 버튼을 자동 생성/삭제
+Private Sub Workbook_SheetChange(ByVal Sh As Object, ByVal Target As Range)
+    On Error GoTo cleanup
+
+    Dim cfg As Worksheet
+    Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    If Sh.Name = SH_SETTINGS Then Exit Sub
+
+    Dim dataSheetName As String
+    dataSheetName = Trim(cfg.Range(CELL_DATASHEET).Value)
+    If dataSheetName = "" Or Sh.Name <> dataSheetName Then Exit Sub
+
+    Dim addrColsStr As String, btnColStr As String
+    addrColsStr = Trim(cfg.Range(CELL_ADDRCOLS).Value)
+    btnColStr = Trim(cfg.Range(CELL_BTNCOL).Value)
+    If addrColsStr = "" Or btnColStr = "" Then Exit Sub
+
+    Dim addrCols() As Long
+    addrCols = ParseColumns(addrColsStr)
+    Dim btnCol As Long
+    btnCol = ColLetterToNum(btnColStr)
+    Dim startRow As Long
+    startRow = GetStartRow(cfg)
+
+    Dim rng As Range
+    Set rng = Intersect(Target, Sh.UsedRange)
+    If rng Is Nothing Then Exit Sub
+
+    Application.EnableEvents = False
+
+    Dim rowsTouched As Object
+    Set rowsTouched = CreateObject("Scripting.Dictionary")
+
+    Dim cell As Range, k As Long, isAddrCol As Boolean
+    For Each cell In rng
+        If cell.Row >= startRow Then
+            isAddrCol = False
+            For k = LBound(addrCols) To UBound(addrCols)
+                If cell.Column = addrCols(k) Then
+                    isAddrCol = True
+                    Exit For
+                End If
+            Next k
+            If isAddrCol Then
+                If Not rowsTouched.Exists(cell.Row) Then rowsTouched.Add cell.Row, True
+            End If
+        End If
+    Next cell
+
+    Dim rw As Variant
+    For Each rw In rowsTouched.Keys
+        UpdateRowButton Sh, CLng(rw), addrCols, btnCol
+    Next rw
+
+cleanup:
+    Application.EnableEvents = True
+End Sub

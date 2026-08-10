@@ -1,0 +1,507 @@
+'==============================================================
+'  필지검색 허브 - 핵심 매크로 모듈 (수정본)
+'  ※ 이 파일은 엑셀 VBA 편집기(Alt+F11) > 파일 > 파일 가져오기 로 추가하세요.
+'
+'  [이번 수정 내용]
+'  1) "② 창 선택"을 번호 입력 방식에서 → "지도 검색창을 한 번 클릭하면
+'     자동으로 그 창 + 클릭 위치가 저장되는" 방식으로 변경.
+'     (알트탭처럼 창 목록을 미리보기로 보여주는 건 VBA로는 불가능해서,
+'      대신 "검색창을 직접 클릭"하는 더 쉬운 방식으로 대체했습니다.)
+'  2) 검색 버튼을 누르면: 창을 강제로 앞으로 가져온 뒤(Alt키 트릭),
+'     저장해둔 위치를 실제로 마우스 클릭해서 검색창에 포커스를 확실히
+'     넣고 나서 Ctrl+A / Ctrl+V / Enter를 보냅니다.
+'     (이전에는 창만 앞으로 가져오고 클릭은 안 해서, 포커스가 엉뚱한
+'      곳에 있으면 붙여넣기가 안 먹는 문제가 있었습니다.)
+'==============================================================
+
+' ---- 설정 시트 내 셀 위치 (설정 시트 레이아웃과 반드시 일치해야 함) ----
+Public Const SH_SETTINGS As String = "설정"
+Public Const CELL_DATASHEET As String = "C4"   ' 데이터 시트 이름 (자동)
+Public Const CELL_MAPTITLE As String = "C5"    ' 지도창 제목 (자동)
+Public Const CELL_MAPHWND As String = "H5"     ' 지도창 hWnd - 숨김 (자동)
+Public Const CELL_ADDRCOLS As String = "C6"    ' 주소 열 (입력)
+Public Const CELL_STARTROW As String = "C7"    ' 데이터 시작 행 (입력)
+Public Const CELL_BTNCOL As String = "C8"      ' 검색 버튼 열 (자동)
+Public Const CELL_FIRSTNOTICE As String = "H8" ' 최초 안내 표시 여부 - 숨김 (자동)
+Public Const CELL_CLICKX As String = "I5"      ' 검색창 클릭 X 오프셋 - 숨김 (자동)
+Public Const CELL_CLICKY As String = "J5"      ' 검색창 클릭 Y 오프셋 - 숨김 (자동)
+Public Const CELL_MAPPROCESS As String = "K5"  ' 지도창을 실행 중인 프로그램(예: chrome.exe) - 숨김 (자동, 안전 확인용)
+
+Public Const BTN_SELECT_SHEET As String = "D4"
+Public Const BTN_SELECT_WINDOW As String = "D5"
+Public Const BTN_CREATE_BUTTONS As String = "D8"
+
+' ---- Windows API 선언 (32/64비트 모두 대응) ----
+#If VBA7 Then
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+    Private Type POINTAPI
+        x As Long
+        y As Long
+    End Type
+    Private Declare PtrSafe Function IsWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function GetWindowTextA Lib "user32" (ByVal hWnd As LongPtr, ByVal lpString As String, ByVal cch As Long) As Long
+    Private Declare PtrSafe Function GetWindowTextLengthA Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function IsIconic Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function ShowWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal nCmdShow As Long) As Long
+    Private Declare PtrSafe Function SetForegroundWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function GetForegroundWindow Lib "user32" () As LongPtr
+    Private Declare PtrSafe Function GetWindowRect Lib "user32" (ByVal hWnd As LongPtr, ByRef lpRect As RECT) As Long
+    Private Declare PtrSafe Function GetCursorPos Lib "user32" (ByRef lpPoint As POINTAPI) As Long
+    Private Declare PtrSafe Function SetCursorPos Lib "user32" (ByVal x As Long, ByVal y As Long) As Long
+    Private Declare PtrSafe Sub mouse_event Lib "user32" (ByVal dwFlags As Long, ByVal dx As Long, ByVal dy As Long, ByVal cButtons As Long, ByVal dwExtraInfo As LongPtr)
+    Private Declare PtrSafe Sub keybd_event Lib "user32" (ByVal bVk As Byte, ByVal bScan As Byte, ByVal dwFlags As Long, ByVal dwExtraInfo As LongPtr)
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
+#Else
+    Private Type RECT
+        Left As Long
+        Top As Long
+        Right As Long
+        Bottom As Long
+    End Type
+    Private Type POINTAPI
+        x As Long
+        y As Long
+    End Type
+    Private Declare Function IsWindow Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function GetWindowTextA Lib "user32" (ByVal hWnd As Long, ByVal lpString As String, ByVal cch As Long) As Long
+    Private Declare Function GetWindowTextLengthA Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function IsIconic Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function ShowWindow Lib "user32" (ByVal hWnd As Long, ByVal nCmdShow As Long) As Long
+    Private Declare Function SetForegroundWindow Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function GetForegroundWindow Lib "user32" () As Long
+    Private Declare Function GetWindowRect Lib "user32" (ByVal hWnd As Long, ByRef lpRect As RECT) As Long
+    Private Declare Function GetCursorPos Lib "user32" (ByRef lpPoint As POINTAPI) As Long
+    Private Declare Function SetCursorPos Lib "user32" (ByVal x As Long, ByVal y As Long) As Long
+    Private Declare Sub mouse_event Lib "user32" (ByVal dwFlags As Long, ByVal dx As Long, ByVal dy As Long, ByVal cButtons As Long, ByVal dwExtraInfo As Long)
+    Private Declare Sub keybd_event Lib "user32" (ByVal bVk As Byte, ByVal bScan As Byte, ByVal dwFlags As Long, ByVal dwExtraInfo As Long)
+    Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
+#End If
+
+Private Const SW_RESTORE As Long = 9
+Private Const VK_MENU As Byte = &H12
+Private Const KEYEVENTF_KEYUP As Long = &H2
+Private Const MOUSEEVENTF_LEFTDOWN As Long = &H2
+Private Const MOUSEEVENTF_LEFTUP As Long = &H4
+
+'==============================================================
+' ① 시트 선택
+'==============================================================
+Public Sub SelectDataSheet()
+    Dim ws As Worksheet
+    Dim names() As String
+    Dim cnt As Long: cnt = 0
+    ReDim names(ThisWorkbook.Worksheets.Count - 1)
+
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name <> SH_SETTINGS Then
+            names(cnt) = ws.Name
+            cnt = cnt + 1
+        End If
+    Next ws
+
+    If cnt = 0 Then
+        MsgBox "선택 가능한 데이터 시트가 없습니다. 먼저 주소가 담긴 시트를 만들어주세요.", vbExclamation, "시트 선택"
+        Exit Sub
+    End If
+
+    Dim msg As String, i As Long
+    msg = "데이터로 사용할 시트의 번호를 입력하세요." & vbCrLf & "(취소하려면 취소를 누르세요)" & vbCrLf & vbCrLf
+    For i = 0 To cnt - 1
+        msg = msg & (i + 1) & ". " & names(i) & vbCrLf
+    Next i
+
+    Dim ans As String
+    ans = InputBox(msg, "① 시트 선택")
+    If Trim(ans) = "" Then Exit Sub
+    If Not IsNumeric(ans) Then
+        MsgBox "숫자를 입력해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim idx As Long: idx = CLng(ans)
+    If idx < 1 Or idx > cnt Then
+        MsgBox "목록에 없는 번호입니다.", vbExclamation
+        Exit Sub
+    End If
+
+    ThisWorkbook.Sheets(SH_SETTINGS).Range(CELL_DATASHEET).Value = names(idx - 1)
+    MsgBox "데이터 시트가 '" & names(idx - 1) & "' (으)로 지정되었습니다.", vbInformation, "① 시트 선택"
+End Sub
+
+'==============================================================
+' ② 창 선택
+'   - "알트탭처럼 창 목록을 미리보기로 보여주기"는 VBA로 구현이 불가능해서,
+'     대신 "지도 검색창을 직접 한 번 클릭"하면 그 창과 클릭 위치를 함께
+'     저장하는 방식으로 만들었습니다. 초보자도 헷갈리지 않도록
+'     번호 입력 없이 "클릭 한 번"으로 끝납니다.
+'==============================================================
+Public Sub SelectMapWindow()
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    Dim resp As VbMsgBoxResult
+    resp = MsgBox( _
+        "지도창을 지정합니다. 아래 순서대로 해주세요." & vbCrLf & vbCrLf & _
+        "1) [확인]을 누르세요." & vbCrLf & _
+        "2) 3초 안에 지도가 열려있는 화면으로 이동해서," & vbCrLf & _
+        "    주소를 입력하는 '검색창'을 마우스로 클릭하세요." & vbCrLf & _
+        "3) 3초가 지나면 자동으로 저장됩니다. (따로 할 일 없음)" & vbCrLf & vbCrLf & _
+        "※ 지도는 반드시 '새 창'으로 열어두세요.", _
+        vbOKCancel + vbInformation, "② 창 선택")
+    If resp <> vbOK Then Exit Sub
+
+    ' 3초 대기 ? 그 사이 사용자가 지도 검색창을 클릭
+    Dim t As Single: t = Timer
+    Do While Timer - t < 3
+        DoEvents
+        Sleep 20
+    Loop
+
+#If VBA7 Then
+    Dim h As LongPtr
+#Else
+    Dim h As Long
+#End If
+    h = GetForegroundWindow()
+
+    If h = 0 Then
+        MsgBox "클릭한 창을 인식하지 못했습니다. 다시 시도해주세요.", vbExclamation, "② 창 선택"
+        Exit Sub
+    End If
+
+    ' 엑셀 자기 자신을 클릭한 경우 (지도창을 클릭하지 않은 경우)
+    If h = Application.hWnd Then
+        MsgBox "지도창이 아니라 엑셀 창이 선택되었습니다." & vbCrLf & _
+               "'② 창 선택'을 다시 누른 뒤, 3초 안에 지도 검색창을 클릭해주세요.", vbExclamation, "② 창 선택"
+        Exit Sub
+    End If
+
+    Dim title As String: title = GetWindowTitle(h)
+    If Trim(title) = "" Then
+        MsgBox "클릭한 창의 정보를 읽지 못했습니다. 다시 시도해주세요.", vbExclamation, "② 창 선택"
+        Exit Sub
+    End If
+
+    ' 방금 클릭한 마우스 위치를, 그 창의 좌상단 기준 상대좌표로 저장
+    Dim pt As POINTAPI: GetCursorPos pt
+    Dim wr As RECT: GetWindowRect h, wr
+
+    cfg.Range(CELL_MAPHWND).Value = CStr(h)
+    cfg.Range(CELL_MAPTITLE).Value = title
+    cfg.Range(CELL_CLICKX).Value = pt.x - wr.Left
+    cfg.Range(CELL_CLICKY).Value = pt.y - wr.Top
+
+    MsgBox "지도창이 '" & title & "' (으)로 지정되었습니다." & vbCrLf & _
+           "검색창 위치도 함께 저장되어, 이제 검색 버튼을 누르면 자동으로 그 위치를 클릭한 뒤 붙여넣습니다.", _
+           vbInformation, "② 창 선택 완료"
+End Sub
+
+'==============================================================
+' ⑤ 검색 버튼 생성
+'==============================================================
+Public Sub CreateSearchButtons()
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    Dim dataSheetName As String: dataSheetName = Trim(cfg.Range(CELL_DATASHEET).Value)
+    If dataSheetName = "" Then
+        MsgBox "먼저 '① 시트 선택'으로 데이터 시트를 지정해주세요.", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets(dataSheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        MsgBox "지정된 데이터 시트('" & dataSheetName & "')를 찾을 수 없습니다. 다시 선택해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim addrColsStr As String: addrColsStr = Trim(cfg.Range(CELL_ADDRCOLS).Value)
+    If addrColsStr = "" Then
+        MsgBox "먼저 '③ 주소 열'을 입력해주세요. (예: A 또는 B,C,D)", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim addrCols() As Long
+    On Error GoTo badcol
+    addrCols = ParseColumns(addrColsStr)
+    On Error GoTo 0
+
+    Dim startRow As Long: startRow = GetStartRow(cfg)
+
+    Dim prevBtnCol As Long: prevBtnCol = 0
+    If Trim(cfg.Range(CELL_BTNCOL).Value) <> "" Then
+        prevBtnCol = ColLetterToNum(Trim(cfg.Range(CELL_BTNCOL).Value))
+    End If
+
+    Dim lastCol As Long: lastCol = GetLastDataColumn(ws, prevBtnCol)
+    If lastCol = 0 Then lastCol = 1
+    Dim newBtnCol As Long: newBtnCol = lastCol + 1
+
+    Dim lastRow As Long: lastRow = GetLastAddrRow(ws, addrCols, startRow)
+    If lastRow < startRow Then
+        MsgBox "생성할 데이터가 없습니다. 데이터 시트에 주소를 먼저 입력해주세요.", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim rowCount As Long: rowCount = lastRow - startRow + 1
+    Dim newBtnColLetter As String: newBtnColLetter = ColNumToLetter(newBtnCol)
+
+    Dim resp As VbMsgBoxResult
+    resp = MsgBox(newBtnColLetter & "열에 " & rowCount & "개 행의 검색 버튼을 생성합니다." & vbCrLf & "계속할까요?", _
+                  vbOKCancel + vbQuestion, "⑤ 검색 버튼 생성")
+    If resp <> vbOK Then Exit Sub
+
+    Application.EnableEvents = False
+    On Error GoTo cleanup
+
+    ' 기존 버튼 열이 있었다면 정리 (재생성 시 중복 방지)
+    If prevBtnCol > 0 And prevBtnCol <> newBtnCol Then
+        ws.Columns(prevBtnCol).Hyperlinks.Delete
+        ws.Columns(prevBtnCol).ClearContents
+    End If
+    ws.Columns(newBtnCol).Hyperlinks.Delete
+
+    Dim r As Long
+    For r = startRow To lastRow
+        UpdateRowButton ws, r, addrCols, newBtnCol
+    Next r
+
+    cfg.Range(CELL_BTNCOL).Value = newBtnColLetter
+
+    Application.EnableEvents = True
+    MsgBox "검색 버튼 생성이 완료되었습니다. (" & newBtnColLetter & "열, " & rowCount & "개)", vbInformation, "⑤ 검색 버튼 생성"
+    Exit Sub
+
+cleanup:
+    Application.EnableEvents = True
+    MsgBox "검색 버튼 생성 중 오류가 발생했습니다: " & Err.Description, vbCritical
+    Exit Sub
+
+badcol:
+    MsgBox "'③ 주소 열' 입력값을 확인해주세요. (예: A 또는 B,C,D)", vbExclamation
+End Sub
+
+'==============================================================
+' 행 단위 버튼 갱신 (실시간 반영 + 최초 생성 공용)
+'==============================================================
+Public Sub UpdateRowButton(ws As Worksheet, rowNum As Long, addrCols() As Long, btnCol As Long)
+    Dim hasVal As Boolean: hasVal = False
+    Dim k As Long
+    For k = LBound(addrCols) To UBound(addrCols)
+        If Trim(ws.Cells(rowNum, addrCols(k)).Value) <> "" Then
+            hasVal = True
+            Exit For
+        End If
+    Next k
+
+    Dim targetCell As Range: Set targetCell = ws.Cells(rowNum, btnCol)
+    If targetCell.Hyperlinks.Count > 0 Then targetCell.Hyperlinks.Delete
+
+    If hasVal Then
+        targetCell.Value = "검색"
+        ws.Hyperlinks.Add Anchor:=targetCell, Address:="", SubAddress:="'" & ws.Name & "'!" & targetCell.Address(False, False), TextToDisplay:="검색"
+    Else
+        targetCell.ClearContents
+    End If
+End Sub
+
+'==============================================================
+' 검색 실행 (행의 검색 버튼 클릭 시)
+'   - 창을 강제로 앞으로 가져온 뒤(Alt키 트릭),
+'     저장된 위치를 실제로 클릭해 검색창에 포커스를 확실히 넣습니다.
+'==============================================================
+Public Sub RunSearchForRow(ws As Worksheet, rowNum As Long)
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    Dim hWndStr As String: hWndStr = Trim(cfg.Range(CELL_MAPHWND).Value)
+    Dim mapTitle As String: mapTitle = Trim(cfg.Range(CELL_MAPTITLE).Value)
+    If hWndStr = "" Or mapTitle = "" Then
+        MsgBox "먼저 '② 창 선택'으로 지도창을 지정해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+#If VBA7 Then
+    Dim h As LongPtr: h = CLngPtr(Val(hWndStr))
+#Else
+    Dim h As Long: h = CLng(Val(hWndStr))
+#End If
+
+    If IsWindow(h) = 0 Then
+        MsgBox "지정한 지도창을 찾을 수 없습니다. '② 창 선택'을 눌러 다시 지정해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    ' [수정] 창 제목(title) 완전일치 검사는 제거했습니다.
+    ' 크롬/지도 사이트는 페이지 로딩, 검색 결과 표시 등에 따라 제목이 실시간으로 바뀌기 때문에
+    ' 저장해둔 제목과 조금이라도 다르면 매번 "창을 찾을 수 없다"는 오류가 발생했습니다.
+    ' 핸들(hWnd)이 살아있는지(IsWindow)만 확인하면 그 창이 맞는지 판단하기에 충분합니다.
+
+    Dim addrColsStr As String: addrColsStr = Trim(cfg.Range(CELL_ADDRCOLS).Value)
+    If addrColsStr = "" Then Exit Sub
+    Dim addrCols() As Long: addrCols = ParseColumns(addrColsStr)
+
+    Dim searchText As String: searchText = ""
+    Dim k As Long, v As String
+    For k = LBound(addrCols) To UBound(addrCols)
+        v = Replace(Trim(ws.Cells(rowNum, addrCols(k)).Value), " ", "")
+        If v <> "" Then
+            If searchText <> "" Then searchText = searchText & " "
+            searchText = searchText & v
+        End If
+    Next k
+    If searchText = "" Then Exit Sub
+
+    ' 최초 1회 안내
+    If UCase(Trim(cfg.Range(CELL_FIRSTNOTICE).Value)) <> "TRUE" Then
+        MsgBox "검색 버튼을 누르면 클립보드 내용이 검색어로 바뀝니다." & vbCrLf & _
+               "확인을 누르면 이후에는 안내 없이 바로 검색됩니다.", vbInformation, "검색 버튼 안내 (최초 1회)"
+        cfg.Range(CELL_FIRSTNOTICE).Value = "TRUE"
+    End If
+
+    ClipboardSetText searchText
+
+    If IsIconic(h) <> 0 Then ShowWindow h, SW_RESTORE
+    Sleep 150
+    ForceForegroundWindow h
+    Sleep 200
+
+    ' 저장된 검색창 위치가 있으면 실제로 그 자리를 클릭해 포커스를 확실히 넣음
+    Dim clickXStr As String, clickYStr As String
+    clickXStr = Trim(cfg.Range(CELL_CLICKX).Value)
+    clickYStr = Trim(cfg.Range(CELL_CLICKY).Value)
+    If clickXStr <> "" And clickYStr <> "" And IsNumeric(clickXStr) And IsNumeric(clickYStr) Then
+        Dim wr As RECT
+        GetWindowRect h, wr
+        ClickAtScreenPoint wr.Left + CLng(clickXStr), wr.Top + CLng(clickYStr)
+        Sleep 150
+    End If
+
+    Application.SendKeys "^a", True
+    Sleep 80
+    Application.SendKeys "^v", True
+    Sleep 80
+    Application.SendKeys "~", True
+End Sub
+
+'==============================================================
+' 창을 강제로 앞으로 가져오기 (Alt 키 트릭 ? SetForegroundWindow 실패 방지)
+'==============================================================
+#If VBA7 Then
+Private Sub ForceForegroundWindow(ByVal h As LongPtr)
+#Else
+Private Sub ForceForegroundWindow(ByVal h As Long)
+#End If
+    keybd_event VK_MENU, 0, 0, 0
+    SetForegroundWindow h
+    keybd_event VK_MENU, 0, KEYEVENTF_KEYUP, 0
+End Sub
+
+'==============================================================
+' 화면 좌표를 실제로 마우스 클릭 (검색창 포커스 확보용)
+'==============================================================
+Private Sub ClickAtScreenPoint(ByVal x As Long, ByVal y As Long)
+    SetCursorPos x, y
+    Sleep 30
+    mouse_event MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0
+    Sleep 30
+    mouse_event MOUSEEVENTF_LEFTUP, 0, 0, 0, 0
+End Sub
+
+'==============================================================
+' 유틸 함수
+'==============================================================
+Public Function ParseColumns(s As String) As Long()
+    Dim arr() As String: arr = Split(Replace(s, " ", ""), ",")
+    Dim res() As Long: ReDim res(UBound(arr))
+    Dim i As Long
+    For i = 0 To UBound(arr)
+        res(i) = ColLetterToNum(arr(i))
+    Next i
+    ParseColumns = res
+End Function
+
+Public Function ColLetterToNum(letters As String) As Long
+    ColLetterToNum = ThisWorkbook.Sheets(SH_SETTINGS).Range(letters & "1").Column
+End Function
+
+Public Function ColNumToLetter(colNum As Long) As String
+    ColNumToLetter = Split(Cells(1, colNum).Address(True, False), "$")(0)
+End Function
+
+Public Function GetStartRow(cfg As Worksheet) As Long
+    Dim v As String: v = Trim(cfg.Range(CELL_STARTROW).Value)
+    If v = "" Or Not IsNumeric(v) Then
+        GetStartRow = 2
+    Else
+        GetStartRow = CLng(v)
+    End If
+End Function
+
+Public Function GetLastDataColumn(ws As Worksheet, excludeCol As Long) As Long
+    Dim lastRowUsed As Long, lastColUsed As Long
+    lastRowUsed = ws.UsedRange.Rows.Count + ws.UsedRange.Row - 1
+    lastColUsed = ws.UsedRange.Columns.Count + ws.UsedRange.Column - 1
+
+    Dim r As Long, c As Long, maxC As Long: maxC = 0
+    For r = 1 To lastRowUsed
+        For c = lastColUsed To 1 Step -1
+            If c <> excludeCol Then
+                If Trim(ws.Cells(r, c).Value) <> "" Then
+                    If c > maxC Then maxC = c
+                    Exit For
+                End If
+            End If
+        Next c
+    Next r
+    GetLastDataColumn = maxC
+End Function
+
+Public Function GetLastAddrRow(ws As Worksheet, addrCols() As Long, startRow As Long) As Long
+    Dim lastRowUsed As Long: lastRowUsed = ws.UsedRange.Rows.Count + ws.UsedRange.Row - 1
+    Dim r As Long, k As Long, res As Long: res = startRow - 1
+    Dim hasVal As Boolean
+
+    For r = lastRowUsed To startRow Step -1
+        hasVal = False
+        For k = LBound(addrCols) To UBound(addrCols)
+            If Trim(ws.Cells(r, addrCols(k)).Value) <> "" Then
+                hasVal = True
+                Exit For
+            End If
+        Next k
+        If hasVal Then
+            res = r
+            Exit For
+        End If
+    Next r
+    GetLastAddrRow = res
+End Function
+
+Public Sub ClipboardSetText(s As String)
+    Dim oData As Object
+    Set oData = CreateObject("new:{1C3B4210-F441-11CE-B9EA-00AA006B1A69}")
+    oData.SetText s
+    oData.PutInClipboard
+End Sub
+
+#If VBA7 Then
+Public Function GetWindowTitle(ByVal h As LongPtr) As String
+#Else
+Public Function GetWindowTitle(ByVal h As Long) As String
+#End If
+    Dim ln As Long: ln = GetWindowTextLengthA(h)
+    If ln = 0 Then
+        GetWindowTitle = ""
+        Exit Function
+    End If
+    Dim buf As String: buf = Space(ln + 1)
+    GetWindowTextA h, buf, ln + 1
+    GetWindowTitle = Left(buf, ln)
+End Function
+
