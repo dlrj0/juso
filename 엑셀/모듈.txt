@@ -31,6 +31,12 @@ Public Const CELL_MAPPROCESS As String = "K5"  ' 지도창을 실행 중인 프�
 Public Const CELL_MAPKEYWORD As String = "N5"  ' 지도창 선택 당시 제목에서 뽑은 사이트 키워드 - 숨김 (자동, 참고용)
 Public Const CELL_RISKNOTICE As String = "H9"  ' (사용 안 함으로 전환 - 아래 참고)
 
+' ---- ⑥⑦⑧ 검색완료 표시 (선택 기능 - 아래 3개 셀은 설정 시트에 직접 추가해서 사용) ----
+' 셀 위치는 원하는 곳으로 바꿔도 되며, 그 경우 이 3줄의 주소만 맞춰서 수정하면 됩니다.
+Public Const CELL_MARK_COLOR_SAMPLE As String = "C9"  ' ⑥ 완료 색상 견본 - 이 셀을 원하는 배경색으로 칠해두면 그 색이 검색버튼 셀에 적용됨. 색 없음(기본) = 사용 안 함
+Public Const CELL_MARK_TEXT_COL As String = "C10"     ' ⑦ 완료 텍스트를 넣을 열 (예: F) - 비워두면 사용 안 함
+Public Const CELL_MARK_TEXT_VALUE As String = "C11"   ' ⑧ 완료 텍스트 값 (예: 완료, O, ?) - 비워두면 "완료" 기본값
+
 Public Const BTN_SELECT_SHEET As String = "D4"
 Public Const BTN_SELECT_WINDOW As String = "D5"
 Public Const BTN_CREATE_BUTTONS As String = "D8"
@@ -190,8 +196,8 @@ Public Sub SelectMapWindow()
     cfg.Range(CELL_MAPKEYWORD).Value = ExtractTitleKeyword(title)
 
     MsgBox "지도창이 '" & title & "' [" & procName & "] (으)로 지정되었습니다." & vbCrLf & _
-           "이제 검색 버튼을 누르면 주소가 클립보드에 복사되고, 이 창이 자동으로 앞으로" & vbCrLf & _
-           "전환됩니다(포커스 이동). 전체선택/붙여넣기/엔터는 직접 눌러주세요." & vbCrLf & vbCrLf & _
+           "이제 검색 버튼을 누르면 주소가 클립보드에 복사되고, 이 창이 자동으로 화면" & vbCrLf & _
+           "앞으로 나옵니다(Alt+Tab을 누른 것과 같아요). 전체선택/붙여넣기/엔터는 직접 눌러주세요." & vbCrLf & vbCrLf & _
            "(안전장치: 검색 실행 때마다 이 창의 실행 프로그램과 제목이 지금과 같은지 다시 확인합니다.)", _
            vbInformation, "② 창 선택 완료"
 End Sub
@@ -475,7 +481,7 @@ Public Sub RunSearchForRow(ws As Worksheet, rowNum As Long)
     If savedProc <> "" Then
         If LCase(curProc) <> LCase(savedProc) Then
             MsgBox "지정된 지도창의 실행 프로그램이 처음 선택했을 때와 다릅니다." & vbCrLf & _
-                   "(창 번호 재사용 가능성 - 안전을 위해 실행을 중단합니다)" & vbCrLf & vbCrLf & _
+                   "(다른 창으로 바뀐 것 같아 안전을 위해 실행을 중단합니다)" & vbCrLf & vbCrLf & _
                    "'② 창 선택'을 다시 눌러 지도창을 재지정해주세요.", vbExclamation, "안전 확인 실패"
             Exit Sub
         End If
@@ -510,7 +516,59 @@ Public Sub RunSearchForRow(ws As Worksheet, rowNum As Long)
     SleepJitter 150
     ForceForegroundWindow h
 
+    ' ---- 선택 기능: 검색완료 표시(색상/텍스트) ----
+    ' 설정 시트에 관련 셀이 채워져 있을 때만 동작하며, 실패해도 검색 자체는 정상 진행됩니다.
+    MarkRowAsSearched ws, rowNum, cfg
+
     mLastRunTick = Timer ' 연속 실행 최소 간격 체크용 - 이번 실행 시각 기록
+End Sub
+
+'==============================================================
+' 검색 버튼을 누른 행에 "검색했음" 표시를 남기는 선택 기능
+'   ① 색상 채우기: 설정 시트 CELL_MARK_COLOR_SAMPLE 셀의 배경색을 그대로
+'      "검색 버튼 셀(E열 등)"에 적용합니다. 그 셀에 배경색이 없으면(기본 흰색/무색)
+'      이 기능은 사용하지 않는 것으로 보고 아무것도 하지 않습니다.
+'   ② 텍스트 채우기: 설정 시트 CELL_MARK_TEXT_COL 에 열이 지정되어 있으면,
+'      그 열의 같은 행에 CELL_MARK_TEXT_VALUE 값을 입력합니다. 열이 비어있으면
+'      이 기능은 사용하지 않습니다. (값이 비어있으면 "완료"를 기본값으로 사용)
+'   ※ 두 기능 모두 완전히 선택사항이며, 켜고 끄는 것은 오직 설정 시트 입력 여부로만
+'      결정됩니다. 자동으로 켜지지 않습니다.
+'   ※ 주소 등 원본 데이터가 있는 셀은 절대 건드리지 않습니다.
+'   ※ 이 기능에서 문제가 생겨도(예: 셀 주소 오타) 검색(복사+창전환) 자체는
+'      이미 끝난 뒤이므로 영향을 주지 않도록 On Error Resume Next로 감쌉니다.
+'==============================================================
+Public Sub MarkRowAsSearched(ws As Worksheet, rowNum As Long, cfg As Worksheet)
+    On Error Resume Next
+
+    ' ---- ① 색상 채우기: 검색 버튼 셀 자체에 적용 ----
+    ' ※ ColorIndex는 옛날 56색 고정 팔레트 기준이라, 최신 Excel의 테마색/RGB 색상을
+    '   칠했을 때 실제로는 색이 있는데도 "없음"으로 잘못 판정될 수 있습니다.
+    '   그래서 채우기 여부는 Pattern으로 확인하고(있음/없음만 판단), 실제 색상 값은
+    '   Interior.Color(RGB)로 그대로 읽어와 적용합니다.
+    Dim colorSample As Range
+    Set colorSample = cfg.Range(CELL_MARK_COLOR_SAMPLE)
+    If colorSample.Interior.Pattern <> xlNone Then
+        Dim btnColStr As String: btnColStr = Trim(cfg.Range(CELL_BTNCOL).Value)
+        If btnColStr <> "" Then
+            Dim btnCol As Long: btnCol = ColLetterToNum(btnColStr)
+            If btnCol > 0 Then
+                ws.Cells(rowNum, btnCol).Interior.Color = colorSample.Interior.Color
+            End If
+        End If
+    End If
+
+    ' ---- ② 텍스트 채우기: 사용자가 지정한 열에 적용 ----
+    Dim markColStr As String: markColStr = Trim(cfg.Range(CELL_MARK_TEXT_COL).Value)
+    If markColStr <> "" Then
+        Dim markCol As Long: markCol = ColLetterToNum(markColStr)
+        If markCol > 0 Then
+            Dim markText As String: markText = Trim(cfg.Range(CELL_MARK_TEXT_VALUE).Value)
+            If markText = "" Then markText = "완료"
+            ws.Cells(rowNum, markCol).Value = markText
+        End If
+    End If
+
+    On Error GoTo 0
 End Sub
 
 ' 시작행 이전이거나 주소가 비어있는 행의 검색 버튼 칸을, 하이퍼링크와 텍스트 모두
@@ -766,3 +824,4 @@ Public Function GetWindowTitle(ByVal h As Long) As String
     GetWindowTextA h, buf, ln + 1
     GetWindowTitle = Left(buf, ln)
 End Function
+
