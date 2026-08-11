@@ -1,0 +1,768 @@
+'==============================================================
+'  필지검색 허브 - 핵심 매크로 모듈 (복사 전용본)
+'  ※ 이 파일은 엑셀 VBA 편집기(Alt+F11) > 파일 > 파일 가져오기 로 추가하세요.
+'    (기존 모듈을 지우고 이 파일 전체로 교체하세요.)
+'
+'  [이번 수정 내용 - "복사 + 창 전환(포커스 이동)" 버전]
+'  검색 버튼을 누르면
+'    1) 주소를 클립보드에 복사
+'    2) 지정해둔 지도창을 앞으로 가져오기(포커스 이동, 알트탭과 동일한 SetForegroundWindow)
+'  까지만 하고 멈춥니다. 전체선택(Ctrl+A) / 붙여넣기(Ctrl+V) / 엔터는 여전히
+'  사용자가 직접 눌러주셔야 합니다. (SendKeys로 키 입력을 자동으로 보내는 부분은
+'  포함하지 않았습니다 - 실제 검색창에 입력 이벤트가 들어가는 부분만 빠진 것입니다)
+'
+'  ②창 선택에서 저장해둔 hWnd/실행 프로그램/창 제목은 이 "창 전환" 대상이 맞는지
+'  확인하는 데 계속 사용됩니다(재활용된 엉뚱한 창으로 전환되는 사고 방지).
+'
+'  나머지 기능(①시트 선택, ⑤버튼 자동 생성, 실시간 버튼 갱신, 최소 실행 간격 제한 등)은
+'  이전과 동일합니다.
+'==============================================================
+
+' ---- 설정 시트 내 셀 위치 (설정 시트 레이아웃과 반드시 일치해야 함) ----
+Public Const SH_SETTINGS As String = "설정"
+Public Const CELL_DATASHEET As String = "C4"   ' 데이터 시트 이름 (자동)
+Public Const CELL_MAPTITLE As String = "C5"    ' 지도창 제목 (자동)
+Public Const CELL_MAPHWND As String = "H5"     ' 지도창 hWnd - 숨김 (자동)
+Public Const CELL_ADDRCOLS As String = "C6"    ' 주소 열 (입력)
+Public Const CELL_STARTROW As String = "C7"    ' 데이터 시작 행 (입력)
+Public Const CELL_BTNCOL As String = "C8"      ' 검색 버튼 열 (자동)
+Public Const CELL_FIRSTNOTICE As String = "H8" ' 최초 안내 표시 여부 - 숨김 (자동)
+Public Const CELL_MAPPROCESS As String = "K5"  ' 지도창을 실행 중인 프로그램(예: chrome.exe) - 숨김 (자동, 참고용)
+Public Const CELL_MAPKEYWORD As String = "N5"  ' 지도창 선택 당시 제목에서 뽑은 사이트 키워드 - 숨김 (자동, 참고용)
+Public Const CELL_RISKNOTICE As String = "H9"  ' (사용 안 함으로 전환 - 아래 참고)
+
+Public Const BTN_SELECT_SHEET As String = "D4"
+Public Const BTN_SELECT_WINDOW As String = "D5"
+Public Const BTN_CREATE_BUTTONS As String = "D8"
+
+' ---- Windows API 선언 (32/64비트 모두 대응) ----
+' ShowWindow/SetForegroundWindow/keybd_event 는 "창을 앞으로 가져오기(포커스 이동)"에만
+' 사용합니다. 화면 좌표 클릭(SetCursorPos/mouse_event)이나 키 입력 자동화(SendKeys)는
+' 사용하지 않습니다.
+#If VBA7 Then
+    Private Declare PtrSafe Function IsWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function IsWindowVisible Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function GetWindowTextA Lib "user32" (ByVal hWnd As LongPtr, ByVal lpString As String, ByVal cch As Long) As Long
+    Private Declare PtrSafe Function GetWindowTextLengthA Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function IsIconic Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function ShowWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal nCmdShow As Long) As Long
+    Private Declare PtrSafe Function SetForegroundWindow Lib "user32" (ByVal hWnd As LongPtr) As Long
+    Private Declare PtrSafe Function GetWindow Lib "user32" (ByVal hWnd As LongPtr, ByVal wCmd As Long) As LongPtr
+    Private Declare PtrSafe Function EnumWindows Lib "user32" (ByVal lpEnumFunc As LongPtr, ByVal lParam As LongPtr) As Long
+    Private Declare PtrSafe Function GetWindowThreadProcessId Lib "user32" (ByVal hWnd As LongPtr, ByRef lpdwProcessId As Long) As Long
+    Private Declare PtrSafe Function OpenProcess Lib "kernel32" (ByVal dwDesiredAccess As Long, ByVal bInheritHandle As Long, ByVal dwProcessId As Long) As LongPtr
+    Private Declare PtrSafe Function QueryFullProcessImageNameA Lib "kernel32" (ByVal hProcess As LongPtr, ByVal dwFlags As Long, ByVal lpExeName As String, ByRef lpdwSize As Long) As Long
+    Private Declare PtrSafe Function CloseHandle Lib "kernel32" (ByVal hObject As LongPtr) As Long
+    Private Declare PtrSafe Sub keybd_event Lib "user32" (ByVal bVk As Byte, ByVal bScan As Byte, ByVal dwFlags As Long, ByVal dwExtraInfo As LongPtr)
+    Private Declare PtrSafe Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
+#Else
+    Private Declare Function IsWindow Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function IsWindowVisible Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function GetWindowTextA Lib "user32" (ByVal hWnd As Long, ByVal lpString As String, ByVal cch As Long) As Long
+    Private Declare Function GetWindowTextLengthA Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function IsIconic Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function ShowWindow Lib "user32" (ByVal hWnd As Long, ByVal nCmdShow As Long) As Long
+    Private Declare Function SetForegroundWindow Lib "user32" (ByVal hWnd As Long) As Long
+    Private Declare Function GetWindow Lib "user32" (ByVal hWnd As Long, ByVal wCmd As Long) As Long
+    Private Declare Function EnumWindows Lib "user32" (ByVal lpEnumFunc As Long, ByVal lParam As Long) As Long
+    Private Declare Function GetWindowThreadProcessId Lib "user32" (ByVal hWnd As Long, ByRef lpdwProcessId As Long) As Long
+    Private Declare Function OpenProcess Lib "kernel32" (ByVal dwDesiredAccess As Long, ByVal bInheritHandle As Long, ByVal dwProcessId As Long) As Long
+    Private Declare Function QueryFullProcessImageNameA Lib "kernel32" (ByVal hProcess As Long, ByVal dwFlags As Long, ByVal lpExeName As String, ByRef lpdwSize As Long) As Long
+    Private Declare Function CloseHandle Lib "kernel32" (ByVal hObject As Long) As Long
+    Private Declare Sub keybd_event Lib "user32" (ByVal bVk As Byte, ByVal bScan As Byte, ByVal dwFlags As Long, ByVal dwExtraInfo As Long)
+    Private Declare Sub Sleep Lib "kernel32" (ByVal dwMilliseconds As Long)
+#End If
+
+Private Const SW_RESTORE As Long = 9
+Private Const VK_MENU As Byte = &H12
+Private Const KEYEVENTF_KEYUP As Long = &H2
+Private Const GW_OWNER As Long = 4
+Private Const PROCESS_QUERY_LIMITED_INFORMATION As Long = &H1000
+
+' 창 목록 팝업(② 창 선택)에서 EnumWindows 콜백이 결과를 담아두는 임시 목록
+Private mEnumList As Collection
+
+' ---- 검색(복사) 실행 최소 간격(초) - 너무 짧은 간격의 연속 클릭 방지 ----
+Private Const MIN_RUN_INTERVAL_SEC As Double = 1.2
+' 마지막으로 검색(복사)을 실행한 시각(Timer 기준, 초). 파일을 새로 열면 0으로 초기화됩니다.
+Private mLastRunTick As Double
+
+'==============================================================
+' ① 시트 선택
+'==============================================================
+Public Sub SelectDataSheet()
+    Dim ws As Worksheet
+    Dim names() As String
+    Dim cnt As Long: cnt = 0
+    ReDim names(ThisWorkbook.Worksheets.Count - 1)
+
+    For Each ws In ThisWorkbook.Worksheets
+        If ws.Name <> SH_SETTINGS Then
+            names(cnt) = ws.Name
+            cnt = cnt + 1
+        End If
+    Next ws
+
+    If cnt = 0 Then
+        MsgBox "선택 가능한 데이터 시트가 없습니다. 먼저 주소가 담긴 시트를 만들어주세요.", vbExclamation, "시트 선택"
+        Exit Sub
+    End If
+
+    Dim msg As String, i As Long
+    msg = "데이터로 사용할 시트의 번호를 입력하세요." & vbCrLf & "(취소하려면 취소를 누르세요)" & vbCrLf & vbCrLf
+    For i = 0 To cnt - 1
+        msg = msg & (i + 1) & ". " & names(i) & vbCrLf
+    Next i
+
+    Dim ans As String
+    ans = InputBox(msg, "① 시트 선택")
+    If Trim(ans) = "" Then Exit Sub
+    If Not IsNumeric(ans) Then
+        MsgBox "숫자를 입력해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim idx As Long: idx = CLng(ans)
+    If idx < 1 Or idx > cnt Then
+        MsgBox "목록에 없는 번호입니다.", vbExclamation
+        Exit Sub
+    End If
+
+    ThisWorkbook.Sheets(SH_SETTINGS).Range(CELL_DATASHEET).Value = names(idx - 1)
+    MsgBox "데이터 시트가 '" & names(idx - 1) & "' (으)로 지정되었습니다.", vbInformation, "① 시트 선택"
+End Sub
+
+'==============================================================
+' ② 창 선택 (알트탭 방식 - 목록에서 번호로 고르기)
+'   - 마우스를 전혀 사용하지 않습니다. 클릭도, 커서 이동도 없습니다.
+'   - EnumWindows로 "현재 열려있는 창 목록"을 그대로 뽑아 ①시트 선택과 같은
+'     "번호 입력" 팝업으로 보여주고, 고른 창의 hWnd + 제목 + 실행 프로그램(exe)을
+'     함께 저장합니다.
+'   ※ 참고: 검색 버튼을 눌러도 이 창으로 자동 전환하거나 키 입력을 보내지 않습니다
+'     (아래 RunSearchForRow는 클립보드 복사만 합니다). 여기서 저장하는 정보는
+'     "지금 클립보드에 복사한 내용을 어느 창에 붙여넣어야 하는지" 확인하는 용도로만 쓰입니다.
+'==============================================================
+Public Sub SelectMapWindow()
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    Set mEnumList = New Collection
+    EnumWindows AddressOf EnumWindowsProc, 0
+
+    If mEnumList.Count = 0 Then
+        MsgBox "현재 열려있는 창을 찾지 못했습니다. 지도 창을 먼저 열어주세요.", vbExclamation, "② 창 선택"
+        Exit Sub
+    End If
+
+    Dim msg As String, i As Long
+    msg = "지도창으로 사용할 창의 번호를 입력하세요." & vbCrLf & _
+          "(대괄호 안은 그 창을 실행 중인 프로그램입니다 / 취소하려면 취소를 누르세요)" & vbCrLf & vbCrLf
+    For i = 1 To mEnumList.Count
+        Dim info As Variant: info = mEnumList(i)
+        msg = msg & i & ". [" & info(2) & "] " & info(1) & vbCrLf
+    Next i
+
+    Dim ans As String
+    ans = InputBox(msg, "② 창 선택")
+    If Trim(ans) = "" Then Exit Sub
+    If Not IsNumeric(ans) Then
+        MsgBox "숫자를 입력해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim idx As Long: idx = CLng(ans)
+    If idx < 1 Or idx > mEnumList.Count Then
+        MsgBox "목록에 없는 번호입니다.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim chosen As Variant: chosen = mEnumList(idx)
+#If VBA7 Then
+    Dim h As LongPtr: h = chosen(0)
+#Else
+    Dim h As Long: h = chosen(0)
+#End If
+    Dim title As String: title = chosen(1)
+    Dim procName As String: procName = chosen(2)
+
+    cfg.Range(CELL_MAPHWND).Value = CStr(h)
+    cfg.Range(CELL_MAPTITLE).Value = title
+    cfg.Range(CELL_MAPPROCESS).Value = procName
+    cfg.Range(CELL_MAPKEYWORD).Value = ExtractTitleKeyword(title)
+
+    MsgBox "지도창이 '" & title & "' [" & procName & "] (으)로 지정되었습니다." & vbCrLf & _
+           "이제 검색 버튼을 누르면 주소가 클립보드에 복사되고, 이 창이 자동으로 앞으로" & vbCrLf & _
+           "전환됩니다(포커스 이동). 전체선택/붙여넣기/엔터는 직접 눌러주세요." & vbCrLf & vbCrLf & _
+           "(안전장치: 검색 실행 때마다 이 창의 실행 프로그램과 제목이 지금과 같은지 다시 확인합니다.)", _
+           vbInformation, "② 창 선택 완료"
+End Sub
+
+'==============================================================
+' 창 제목에서 "사이트 이름"으로 쓸만한 부분만 뽑아내는 함수 (참고 정보 표시용)
+'   예: "서울시청 상세정보 - 카카오맵" → "카카오맵"
+'==============================================================
+Public Function ExtractTitleKeyword(title As String) As String
+    Dim s As String: s = title
+    Dim i As Long
+
+    Dim bestPos As Long: bestPos = 0
+    Dim bestSepLen As Long: bestSepLen = 0
+    Dim candSeps(3) As String
+    candSeps(0) = " - "
+    candSeps(1) = " | "
+    candSeps(2) = " :: "
+    candSeps(3) = " ? "
+
+    For i = 0 To UBound(candSeps)
+        Dim p As Long: p = InStrRev(s, candSeps(i))
+        If p > bestPos Then
+            bestPos = p
+            bestSepLen = Len(candSeps(i))
+        End If
+    Next i
+
+    If bestPos > 0 Then
+        ExtractTitleKeyword = Trim(Mid(s, bestPos + bestSepLen))
+    Else
+        ExtractTitleKeyword = Trim(s)
+    End If
+End Function
+
+' EnumWindows가 열려있는 창마다 한 번씩 호출하는 콜백.
+#If VBA7 Then
+Private Function EnumWindowsProc(ByVal hWnd As LongPtr, ByVal lParam As LongPtr) As Long
+#Else
+Private Function EnumWindowsProc(ByVal hWnd As Long, ByVal lParam As Long) As Long
+#End If
+    EnumWindowsProc = 1 ' 0이 아니면 다음 창도 계속 열거
+
+    If IsWindowVisible(hWnd) = 0 Then Exit Function
+    If hWnd = Application.hWnd Then Exit Function
+    If GetWindow(hWnd, GW_OWNER) <> 0 Then Exit Function
+
+    Dim title As String: title = GetWindowTitle(hWnd)
+    If Trim(title) = "" Then Exit Function
+
+    Dim procName As String: procName = GetProcessNameOfWindow(hWnd)
+
+    mEnumList.Add Array(hWnd, title, procName)
+End Function
+
+'==============================================================
+' ⑤ 검색 버튼 생성
+'==============================================================
+Public Sub CreateSearchButtons()
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    Dim dataSheetName As String: dataSheetName = Trim(cfg.Range(CELL_DATASHEET).Value)
+    If dataSheetName = "" Then
+        MsgBox "먼저 '① 시트 선택'으로 데이터 시트를 지정해주세요.", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim ws As Worksheet
+    On Error Resume Next
+    Set ws = ThisWorkbook.Sheets(dataSheetName)
+    On Error GoTo 0
+    If ws Is Nothing Then
+        MsgBox "지정된 데이터 시트('" & dataSheetName & "')를 찾을 수 없습니다. 다시 선택해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    Dim addrColsStr As String: addrColsStr = Trim(cfg.Range(CELL_ADDRCOLS).Value)
+    If addrColsStr = "" Then
+        MsgBox "먼저 '③ 주소 열'을 입력해주세요. (예: A 또는 B,C,D)", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim addrCols() As Long
+    On Error GoTo badcol
+    addrCols = ParseColumns(addrColsStr)
+    On Error GoTo 0
+
+    Dim startRow As Long: startRow = GetStartRow(cfg)
+
+    Dim prevBtnCol As Long: prevBtnCol = 0
+    If Trim(cfg.Range(CELL_BTNCOL).Value) <> "" Then
+        prevBtnCol = ColLetterToNum(Trim(cfg.Range(CELL_BTNCOL).Value))
+    End If
+
+    Dim lastCol As Long: lastCol = GetLastDataColumn(ws, prevBtnCol)
+    If lastCol = 0 Then lastCol = 1
+    Dim newBtnCol As Long: newBtnCol = lastCol + 1
+
+    Dim lastRow As Long: lastRow = GetLastAddrRow(ws, addrCols, startRow)
+    If lastRow < startRow Then
+        MsgBox "생성할 데이터가 없습니다. 데이터 시트에 주소를 먼저 입력해주세요.", vbExclamation, "검색 버튼 생성"
+        Exit Sub
+    End If
+
+    Dim rowCount As Long: rowCount = lastRow - startRow + 1
+    Dim newBtnColLetter As String: newBtnColLetter = ColNumToLetter(newBtnCol)
+
+    Dim resp As VbMsgBoxResult
+    resp = MsgBox(newBtnColLetter & "열에 " & rowCount & "개 행의 검색 버튼을 생성합니다." & vbCrLf & "계속할까요?", _
+                  vbOKCancel + vbQuestion, "⑤ 검색 버튼 생성")
+    If resp <> vbOK Then Exit Sub
+
+    Application.EnableEvents = False
+    On Error GoTo cleanup
+
+    ' 기존 버튼 열이 있었다면 정리 (재생성 시 중복 방지)
+    If prevBtnCol > 0 And prevBtnCol <> newBtnCol Then
+        ws.Columns(prevBtnCol).Hyperlinks.Delete
+        ws.Columns(prevBtnCol).ClearContents
+    End If
+
+    ' ---- 버튼 열 전체를 항상 완전히 비우고 시작합니다 ----
+    ' (이전과 같은 열을 재사용하는 경우에도, "시작행 이전 행"이나 "이제는 빈 값이 된 행"에
+    '  예전 하이퍼링크/텍스트가 남아있지 않도록 열 전체를 초기화한 뒤 다시 채웁니다.
+    '  이렇게 해야 시작행을 나중에 늘렸을 때 그 이전 행들에 "빈칸인데 하이퍼링크만 남는" 문제가 없습니다.)
+    ws.Columns(newBtnCol).Hyperlinks.Delete
+    ws.Columns(newBtnCol).ClearContents
+
+    Dim r As Long
+    For r = startRow To lastRow
+        UpdateRowButton ws, r, addrCols, newBtnCol
+    Next r
+
+    cfg.Range(CELL_BTNCOL).Value = newBtnColLetter
+
+    Application.EnableEvents = True
+    MsgBox "검색 버튼 생성이 완료되었습니다. (" & newBtnColLetter & "열, " & rowCount & "개)", vbInformation, "⑤ 검색 버튼 생성"
+    Exit Sub
+
+cleanup:
+    Application.EnableEvents = True
+    MsgBox "검색 버튼 생성 중 오류가 발생했습니다: " & Err.Description, vbCritical
+    Exit Sub
+
+badcol:
+    MsgBox "'③ 주소 열' 입력값을 확인해주세요. (예: A 또는 B,C,D)", vbExclamation
+End Sub
+
+'==============================================================
+' 행 단위 버튼 갱신 (실시간 반영 + 최초 생성 공용)
+'==============================================================
+Public Sub UpdateRowButton(ws As Worksheet, rowNum As Long, addrCols() As Long, btnCol As Long)
+    Dim hasVal As Boolean: hasVal = False
+    Dim k As Long
+    For k = LBound(addrCols) To UBound(addrCols)
+        If Trim(ws.Cells(rowNum, addrCols(k)).Value) <> "" Then
+            hasVal = True
+            Exit For
+        End If
+    Next k
+
+    Dim targetCell As Range: Set targetCell = ws.Cells(rowNum, btnCol)
+    If targetCell.Hyperlinks.Count > 0 Then targetCell.Hyperlinks.Delete
+
+    If hasVal Then
+        targetCell.Value = "검색"
+        ws.Hyperlinks.Add Anchor:=targetCell, Address:="", SubAddress:="'" & ws.Name & "'!" & targetCell.Address(False, False), TextToDisplay:="검색"
+    Else
+        targetCell.ClearContents
+    End If
+End Sub
+
+'==============================================================
+' 검색 실행 (행의 검색 버튼 클릭 시) - ★ 복사 + 창 전환(포커스 이동) ★
+'   - 주소를 클립보드에 복사하고, 지정해둔 지도창을 앞으로 가져옵니다(포커스 이동).
+'   - 마우스 좌표 클릭(SetCursorPos/mouse_event)이나 키 입력 자동화(SendKeys)는
+'     사용하지 않습니다. 전체선택/붙여넣기/엔터는 사용자가 직접 눌러주세요.
+'   - 실행 전, 저장해둔 hWnd가 "저장 당시와 같은 프로그램/사이트" 소속인지 재확인합니다.
+'     (창 핸들 재활용으로 인해 엉뚱한 창을 앞으로 가져오는 사고 방지)
+'==============================================================
+Public Sub RunSearchForRow(ws As Worksheet, rowNum As Long)
+    Dim cfg As Worksheet: Set cfg = ThisWorkbook.Sheets(SH_SETTINGS)
+
+    ' ---- 자기치유: 이 행이 시작행보다 앞이거나, 주소가 실제로 비어있으면 ----
+    ' 정상적인 검색 대상이 아니므로, 에러/경고를 띄우는 대신 혹시 남아있을 수 있는
+    ' 이 자리의 하이퍼링크/텍스트를 조용히 지우고 그냥 종료합니다.
+    ' (시작행을 나중에 늘렸을 때 그 이전 행에 남아있던 예전 버튼을 눌러도 안전하게 정리됩니다)
+    Dim addrColsStr As String: addrColsStr = Trim(cfg.Range(CELL_ADDRCOLS).Value)
+    If addrColsStr = "" Then Exit Sub
+    Dim addrCols() As Long: addrCols = ParseColumns(addrColsStr)
+
+    Dim startRow As Long: startRow = GetStartRow(cfg)
+
+    ' ---- 각 주소 열의 원본 값(공백만 제거)을 먼저 읽어둡니다 ----
+    ' ※ 여기서는 Cells(...).Value를 "읽기"만 하고, 어떤 셀에도 값을 다시 써넣지 않습니다.
+    '    (즉 원본 데이터 시트의 셀 내용은 이 과정에서 절대 바뀌지 않습니다)
+    ' ※ 예전엔 Replace(...," ","")로 셀 안의 모든 공백까지 제거했으나,
+    '   "전주시 완산구", "태평동 123-4"처럼 단어 사이에 의미 있는 공백이 있는
+    '   주소 형식에서는 이게 오히려 주소를 훼손시켰습니다(예: "전주시완산구").
+    '   그래서 앞뒤 공백만 제거(Trim)하고 중간 공백은 그대로 둡니다.
+    '   (본번/부번처럼 순수 숫자 열은 어차피 내부에 공백이 없으므로 영향 없음)
+    Dim rawVals() As String: ReDim rawVals(LBound(addrCols) To UBound(addrCols))
+    Dim k As Long
+    For k = LBound(addrCols) To UBound(addrCols)
+        rawVals(k) = Trim(ws.Cells(rowNum, addrCols(k)).Value)
+    Next k
+
+    ' ---- 지번(번지) 정리하며 복사할 텍스트 조합 ----
+    '   - 한 열 안에 "0001-0000" 처럼 붙어있는 경우: NormalizeJibunToken 이 정리
+    '   - 본번/부번이 서로 다른 두 열로 나뉜 경우(예: C열="0001", D열="0000"):
+    '     두 열이 연속으로 모두 숫자로만 되어있으면 "본번,부번" 쌍으로 보고 하나로 합칩니다.
+    '     (부번이 0이면 본번만 표시 - "1번지"와 같은 뜻)
+    Dim searchText As String: searchText = ""
+    Dim tok As String
+    k = LBound(addrCols)
+    Do While k <= UBound(addrCols)
+        ' ※ VBA의 And는 단락평가(short-circuit)를 하지 않으므로,
+        '   "k < UBound(addrCols)"가 False여도 뒤의 IsAllDigits(rawVals(k+1))이
+        '   그대로 실행되어 배열 범위를 벗어나는 오류가 났습니다.
+        '   그래서 k+1을 참조해도 안전한 경우에만 판단하도록 중첩 If로 분리합니다.
+        Dim canCombine As Boolean: canCombine = False
+        If k < UBound(addrCols) Then
+            If IsAllDigits(rawVals(k)) And IsAllDigits(rawVals(k + 1)) Then
+                canCombine = True
+            End If
+        End If
+
+        If canCombine Then
+            tok = CombineBonBu(rawVals(k), rawVals(k + 1))
+            k = k + 2
+        Else
+            tok = NormalizeJibunToken(rawVals(k))
+            k = k + 1
+        End If
+        If tok <> "" Then
+            If searchText <> "" Then searchText = searchText & " "
+            searchText = searchText & tok
+        End If
+    Loop
+
+    If rowNum < startRow Or searchText = "" Then
+        ClearStaleButtonCell ws, rowNum, cfg
+        Exit Sub
+    End If
+
+    Dim hWndStr As String: hWndStr = Trim(cfg.Range(CELL_MAPHWND).Value)
+    Dim mapTitle As String: mapTitle = Trim(cfg.Range(CELL_MAPTITLE).Value)
+    If hWndStr = "" Or mapTitle = "" Then
+        MsgBox "먼저 '② 창 선택'으로 지도창을 지정해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+#If VBA7 Then
+    Dim h As LongPtr: h = CLngPtr(Val(hWndStr))
+#Else
+    Dim h As Long: h = CLng(Val(hWndStr))
+#End If
+
+    If IsWindow(h) = 0 Then
+        MsgBox "지정한 지도창을 찾을 수 없습니다. '② 창 선택'을 눌러 다시 지정해주세요.", vbExclamation
+        Exit Sub
+    End If
+
+    ' ---- 안전장치: 연속 실행 최소 간격 확인 ----
+    If mLastRunTick > 0 Then
+        Dim elapsed As Double: elapsed = Timer - mLastRunTick
+        If elapsed < 0 Then elapsed = elapsed + 86400 ' 자정 넘어간 경우 보정
+        If elapsed < MIN_RUN_INTERVAL_SEC Then
+            MsgBox "너무 빠르게 연속 실행되었습니다. 잠시 후 다시 눌러주세요." & vbCrLf & _
+                   "(최소 간격: " & MIN_RUN_INTERVAL_SEC & "초)", vbInformation, "잠시만요"
+            Exit Sub
+        End If
+    End If
+
+    ' ---- 안전장치: 창 핸들(hWnd) 재활용 여부 확인 ----
+    ' 창을 닫으면 hWnd 번호가 반납되었다가 완전히 다른 프로그램에 재발급될 수 있습니다.
+    ' 창 선택 당시 저장해둔 실행 프로그램(exe)과 지금 이 hWnd의 실행 프로그램이 같은지
+    ' 비교해서, 다르면 절대로 진행하지 않고 안내 후 중단합니다.
+    Dim savedProc As String: savedProc = Trim(cfg.Range(CELL_MAPPROCESS).Value)
+    Dim curProc As String: curProc = GetProcessNameOfWindow(h)
+    If savedProc <> "" Then
+        If LCase(curProc) <> LCase(savedProc) Then
+            MsgBox "지정된 지도창의 실행 프로그램이 처음 선택했을 때와 다릅니다." & vbCrLf & _
+                   "(창 번호 재사용 가능성 - 안전을 위해 실행을 중단합니다)" & vbCrLf & vbCrLf & _
+                   "'② 창 선택'을 다시 눌러 지도창을 재지정해주세요.", vbExclamation, "안전 확인 실패"
+            Exit Sub
+        End If
+    End If
+
+    ' ---- 안전장치: 창 제목(사이트) 대조 ----
+    ' 같은 크롬 창이라도 그 사이 다른 탭/사이트로 이동했다면 창 제목이 바뀌므로,
+    ' ② 창 선택 당시 뽑아둔 사이트 키워드가 지금 창 제목에 그대로 들어있는지 확인합니다.
+    Dim savedKeyword As String: savedKeyword = Trim(cfg.Range(CELL_MAPKEYWORD).Value)
+    If savedKeyword <> "" Then
+        Dim curTitle As String: curTitle = GetWindowTitle(h)
+        If InStr(1, curTitle, savedKeyword, vbTextCompare) = 0 Then
+            MsgBox "지정된 지도창의 현재 제목이 처음 선택했을 때와 다릅니다." & vbCrLf & _
+                   "(선택 당시: …" & savedKeyword & " / 지금 제목: " & curTitle & ")" & vbCrLf & _
+                   "다른 탭/사이트로 이동했을 가능성이 있어 안전을 위해 실행을 중단합니다." & vbCrLf & vbCrLf & _
+                   "'② 창 선택'을 다시 눌러 지도창을 재지정해주세요.", vbExclamation, "안전 확인 실패"
+            Exit Sub
+        End If
+    End If
+
+    ' 최초 1회 안내
+    If UCase(Trim(cfg.Range(CELL_FIRSTNOTICE).Value)) <> "TRUE" Then
+        MsgBox "검색 버튼을 누르면 주소가 클립보드에 복사되고, 지도창이 자동으로 앞으로" & vbCrLf & _
+               "전환됩니다. 전체선택 → 붙여넣기 → 엔터는 직접 눌러주세요." & vbCrLf & _
+               "확인을 누르면 이후에는 이 안내 없이 바로 실행됩니다.", vbInformation, "검색 버튼 안내 (최초 1회)"
+        cfg.Range(CELL_FIRSTNOTICE).Value = "TRUE"
+    End If
+
+    ClipboardSetText searchText
+
+    If IsIconic(h) <> 0 Then ShowWindow h, SW_RESTORE
+    SleepJitter 150
+    ForceForegroundWindow h
+
+    mLastRunTick = Timer ' 연속 실행 최소 간격 체크용 - 이번 실행 시각 기록
+End Sub
+
+' 시작행 이전이거나 주소가 비어있는 행의 검색 버튼 칸을, 하이퍼링크와 텍스트 모두
+' 조용히 정리합니다. (에러 메시지 없이 자기치유)
+Private Sub ClearStaleButtonCell(ws As Worksheet, rowNum As Long, cfg As Worksheet)
+    Dim btnColStr As String: btnColStr = Trim(cfg.Range(CELL_BTNCOL).Value)
+    If btnColStr = "" Then Exit Sub
+
+    Dim btnCol As Long
+    On Error Resume Next
+    btnCol = ColLetterToNum(btnColStr)
+    On Error GoTo 0
+    If btnCol = 0 Then Exit Sub
+
+    Dim targetCell As Range: Set targetCell = ws.Cells(rowNum, btnCol)
+    Application.EnableEvents = False
+    If targetCell.Hyperlinks.Count > 0 Then targetCell.Hyperlinks.Delete
+    targetCell.ClearContents
+    Application.EnableEvents = True
+End Sub
+
+'==============================================================
+' 창을 강제로 앞으로 가져오기 (Alt 키 트릭 - SetForegroundWindow 실패 방지)
+'   ※ 알트탭이 내부적으로 사용하는 것과 동일한 API 조합입니다. 화면 좌표 클릭이 아니라
+'     "어떤 창이 활성 창인가"만 바꾸는 동작이라 마우스 이동/클릭과는 무관합니다.
+'==============================================================
+#If VBA7 Then
+Private Sub ForceForegroundWindow(ByVal h As LongPtr)
+#Else
+Private Sub ForceForegroundWindow(ByVal h As Long)
+#End If
+    keybd_event VK_MENU, 0, 0, 0
+    SetForegroundWindow h
+    keybd_event VK_MENU, 0, KEYEVENTF_KEYUP, 0
+End Sub
+
+'==============================================================
+' 고정 지연(Sleep) 대신 소폭의 무작위 편차를 더해 대기하는 헬퍼.
+'   - 창 복원 후 포커스 전환 사이에 짧게 대기해, 창 전환이 안정적으로 처리되도록 합니다.
+'==============================================================
+Private Sub SleepJitter(ByVal baseMs As Long)
+    Randomize
+    Sleep baseMs + CLng(Int(Rnd * 71)) ' baseMs ~ baseMs+70ms
+End Sub
+
+'==============================================================
+' 지정한 창(hWnd)이 어떤 프로그램(.exe)에서 열렸는지 조회
+'   - ② 창 선택 시 저장해두고, 검색 실행 때마다 재확인해서
+'     hWnd 재활용으로 인한 오작동(엉뚱한 창 전환)을 막는 데 사용합니다.
+'==============================================================
+#If VBA7 Then
+Private Function GetProcessNameOfWindow(ByVal h As LongPtr) As String
+#Else
+Private Function GetProcessNameOfWindow(ByVal h As Long) As String
+#End If
+    Dim pid As Long
+    GetWindowThreadProcessId h, pid
+    If pid = 0 Then
+        GetProcessNameOfWindow = ""
+        Exit Function
+    End If
+
+#If VBA7 Then
+    Dim hProc As LongPtr
+#Else
+    Dim hProc As Long
+#End If
+    hProc = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid)
+    If hProc = 0 Then
+        GetProcessNameOfWindow = ""
+        Exit Function
+    End If
+
+    Dim buf As String: buf = Space(260)
+    Dim sz As Long: sz = 260
+    If QueryFullProcessImageNameA(hProc, 0, buf, sz) <> 0 Then
+        Dim fullPath As String: fullPath = Left(buf, sz)
+        Dim parts() As String: parts = Split(fullPath, "\")
+        GetProcessNameOfWindow = parts(UBound(parts))
+    Else
+        GetProcessNameOfWindow = ""
+    End If
+    CloseHandle hProc
+End Function
+
+'==============================================================
+' 지번(번지) 표기 정리
+'   - "0001" → "1"
+'   - "0001-0000" → "1"   (부번이 0이면 본번만 표시 - "1번지"와 같은 뜻)
+'   - "0001-0001" → "1-1"
+'   - "1-1" → "1-1"        (이미 정리된 값은 그대로)
+'   - 리(里)/동 이름처럼 숫자-숫자 형태가 아닌 값은 손대지 않고 그대로 둡니다.
+'     (예: "ㅇㅇ리" 는 조건에 안 맞으므로 원본 그대로 반환)
+'   - "-" 가 없거나 1개인, 각 부분이 전부 숫자인 경우에만 정리 대상으로 판단합니다.
+'==============================================================
+Public Function NormalizeJibunToken(v As String) As String
+    Dim s As String: s = Trim(v)
+    If s = "" Then
+        NormalizeJibunToken = s
+        Exit Function
+    End If
+
+    Dim parts() As String: parts = Split(s, "-")
+
+    ' "-"가 2개 이상(부분이 3개 이상)이면 지번 형식이 아니라고 보고 원본 유지
+    If UBound(parts) > 1 Then
+        NormalizeJibunToken = s
+        Exit Function
+    End If
+
+    Dim i As Long
+    For i = 0 To UBound(parts)
+        If Not IsAllDigits(parts(i)) Then
+            NormalizeJibunToken = s
+            Exit Function
+        End If
+    Next i
+
+    Dim bon As Long: bon = CLng(parts(0))
+
+    If UBound(parts) = 1 Then
+        Dim bu As Long: bu = CLng(parts(1))
+        If bu <> 0 Then
+            NormalizeJibunToken = CStr(bon) & "-" & CStr(bu)
+        Else
+            NormalizeJibunToken = CStr(bon)
+        End If
+    Else
+        NormalizeJibunToken = CStr(bon)
+    End If
+End Function
+
+' 본번/부번이 서로 다른 열에 나뉘어 있을 때, 두 값을 하나의 지번 표기로 합칩니다.
+'   - 예: 본번 "0001" + 부번 "0000" → "1"      (부번 0 = 본번만 있는 지번)
+'   - 예: 본번 "0001" + 부번 "0001" → "1-1"
+' 호출하는 쪽(RunSearchForRow)에서 두 값이 이미 "숫자로만 이루어진 값"인지
+' 확인한 뒤에만 호출하므로, 여기서는 그대로 숫자로 변환합니다.
+Public Function CombineBonBu(bonRaw As String, buRaw As String) As String
+    Dim bon As Long: bon = CLng(bonRaw)
+    Dim bu As Long: bu = CLng(buRaw)
+    If bu <> 0 Then
+        CombineBonBu = CStr(bon) & "-" & CStr(bu)
+    Else
+        CombineBonBu = CStr(bon)
+    End If
+End Function
+
+' 문자열이 전부 숫자(0-9)로만 이루어져 있는지 확인 (빈 문자열은 False)
+Private Function IsAllDigits(s As String) As Boolean
+    If Len(s) = 0 Then
+        IsAllDigits = False
+        Exit Function
+    End If
+    Dim i As Long, c As String
+    For i = 1 To Len(s)
+        c = Mid(s, i, 1)
+        If c < "0" Or c > "9" Then
+            IsAllDigits = False
+            Exit Function
+        End If
+    Next i
+    IsAllDigits = True
+End Function
+
+'==============================================================
+' 유틸 함수
+'==============================================================
+Public Function ParseColumns(s As String) As Long()
+    Dim arr() As String: arr = Split(Replace(s, " ", ""), ",")
+    Dim res() As Long: ReDim res(UBound(arr))
+    Dim i As Long
+    For i = 0 To UBound(arr)
+        res(i) = ColLetterToNum(arr(i))
+    Next i
+    ParseColumns = res
+End Function
+
+Public Function ColLetterToNum(letters As String) As Long
+    ColLetterToNum = ThisWorkbook.Sheets(SH_SETTINGS).Range(letters & "1").Column
+End Function
+
+Public Function ColNumToLetter(colNum As Long) As String
+    ColNumToLetter = Split(Cells(1, colNum).Address(True, False), "$")(0)
+End Function
+
+Public Function GetStartRow(cfg As Worksheet) As Long
+    Dim v As String: v = Trim(cfg.Range(CELL_STARTROW).Value)
+    If v = "" Or Not IsNumeric(v) Then
+        GetStartRow = 2
+    Else
+        GetStartRow = CLng(v)
+    End If
+End Function
+
+Public Function GetLastDataColumn(ws As Worksheet, excludeCol As Long) As Long
+    Dim lastRowUsed As Long, lastColUsed As Long
+    lastRowUsed = ws.UsedRange.Rows.Count + ws.UsedRange.Row - 1
+    lastColUsed = ws.UsedRange.Columns.Count + ws.UsedRange.Column - 1
+
+    Dim r As Long, c As Long, maxC As Long: maxC = 0
+    For r = 1 To lastRowUsed
+        For c = lastColUsed To 1 Step -1
+            If c <> excludeCol Then
+                If Trim(ws.Cells(r, c).Value) <> "" Then
+                    If c > maxC Then maxC = c
+                    Exit For
+                End If
+            End If
+        Next c
+    Next r
+    GetLastDataColumn = maxC
+End Function
+
+Public Function GetLastAddrRow(ws As Worksheet, addrCols() As Long, startRow As Long) As Long
+    Dim lastRowUsed As Long: lastRowUsed = ws.UsedRange.Rows.Count + ws.UsedRange.Row - 1
+    Dim r As Long, k As Long, res As Long: res = startRow - 1
+    Dim hasVal As Boolean
+
+    For r = lastRowUsed To startRow Step -1
+        hasVal = False
+        For k = LBound(addrCols) To UBound(addrCols)
+            If Trim(ws.Cells(r, addrCols(k)).Value) <> "" Then
+                hasVal = True
+                Exit For
+            End If
+        Next k
+        If hasVal Then
+            res = r
+            Exit For
+        End If
+    Next r
+    GetLastAddrRow = res
+End Function
+
+Public Sub ClipboardSetText(s As String)
+    Dim oData As Object
+    Set oData = CreateObject("new:{1C3B4210-F441-11CE-B9EA-00AA006B1A69}")
+    oData.SetText s
+    oData.PutInClipboard
+End Sub
+
+#If VBA7 Then
+Public Function GetWindowTitle(ByVal h As LongPtr) As String
+#Else
+Public Function GetWindowTitle(ByVal h As Long) As String
+#End If
+    Dim ln As Long: ln = GetWindowTextLengthA(h)
+    If ln = 0 Then
+        GetWindowTitle = ""
+        Exit Function
+    End If
+    Dim buf As String: buf = Space(ln + 1)
+    GetWindowTextA h, buf, ln + 1
+    GetWindowTitle = Left(buf, ln)
+End Function
