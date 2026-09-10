@@ -180,8 +180,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   #screen-map.map-focus #mapExtraControls,
   #screen-map.map-focus .backlink,
   #screen-map.map-focus #mapFocusHint{display:none;}
-  #screen-map.map-focus #kakaoMapContainer{height:90vh;min-height:420px;}
   #screen-map.map-focus .map-toolbar{margin-bottom:6px;}
+  /* 지도는 항상 일반 레이어(뒤)에 두고, fab-stack/sticky-bottom 같은 고정 버튼이
+     그 위(앞)에 뜨도록 확실히 쌓임 순서를 분리함. position을 명시해야 지도 SDK가
+     내부적으로 넣는 저작권 표시 등도 이 컨테이너 기준으로만 쌓여서, 고정 버튼의
+     z-index를 벗어나 앞으로 튀어나오지 않음. */
+  #kakaoMapContainer{position:relative;z-index:1;}
+  /* 높이는 자바스크립트(App.applyMapFocusHeight)가 뷰포트 끝까지 정확히 채우도록
+     계산해서 인라인 style로 지정함 — 아래 90vh는 그 계산이 실패했을 때의 대비값. */
+  #screen-map.map-focus #kakaoMapContainer{height:90vh;min-height:420px;}
 
   .parcel-list{border-top:1px solid var(--surface-2);}
   .parcel-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--surface-2);}
@@ -252,7 +259,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .quotabadge.critical{background:var(--warn);color:#fff;border-color:var(--warn);}
 
   .fab-stack{
-    position:fixed;right:16px;bottom:20px;z-index:25;display:flex;flex-direction:column;gap:10px;
+    position:fixed;right:16px;bottom:20px;z-index:30;display:flex;flex-direction:column;gap:10px;
     transition:bottom .15s ease;
   }
   .fab-stack.with-sticky{ bottom:96px; }
@@ -889,6 +896,7 @@ let _kakaoSdkLoadPromise = null;
 
 let _kakaoMap = null;
 let _kakaoMapMarkers = [];
+let _kakaoMapResizeObserver = null;
 let _kakaoRoutePolyline = null;
 let _kakaoNavRoutePolylines = [];     // 실선/점선 구간별 폴리라인(본선) 배열
 let _kakaoNavRouteHaloPolylines = [];  // 위 폴리라인들의 흰 테두리(halo) 배열
@@ -2201,6 +2209,7 @@ const App = {
         level: 8
       });
       _kakaoMap.setMapTypeId(kakao.maps.MapTypeId[this._currentMapType || 'ROADMAP']);
+      this.ensureMapResizeObserver(container);
     }
     // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
     // 전환된 직후엔 브라우저 레이아웃이 아직 확정되지 않아 컨테이너 크기를 잘못 읽는 경우가
@@ -2211,11 +2220,26 @@ const App = {
 
   // 카카오맵은 자신이 그려진 div의 크기가 바뀌어도 스스로 알아채지 못해서
   // kakao.maps.event.trigger(map,'relayout')로 "지금 크기 다시 재봐" 라고 알려줘야 함.
-  // 문제는 이걸 너무 이른 타이밍(setTimeout 0ms 등)에 부르면 브라우저가 아직
-  // 새 레이아웃(예: 집중모드로 넓어진 컨테이너 폭)을 확정하기 전이라 relayout이
-  // 옛날 크기 기준으로 동작해버려서, 새로 넓어진 오른쪽 영역이 빈 타일(워터마크)로
-  // 남는 문제가 있었음. rAF를 두 번 중첩해서 "다음 페인트가 끝난 뒤"까지 기다리고,
-  // 혹시 그래도 늦게 끝나는 경우를 대비해 250ms 뒤에 한 번 더 안전하게 재호출함.
+  // setTimeout/requestAnimationFrame으로 "이쯤이면 레이아웃이 끝났겠지" 하고 추측해서
+  // 부르면, 집중모드처럼 레이아웃이 늦게(또는 여러 단계로) 끝나는 경우 타이밍을 놓쳐서
+  // 새로 넓어진 오른쪽 영역이 빈 타일(워터마크)로 남는 문제가 있었음(브라우저 배율을
+  // 바꾸면 고쳐졌던 것도, 그때서야 브라우저가 강제로 resize를 발생시켜준 것뿐).
+  // → 추측 대신 ResizeObserver로 지도 div의 "실제 크기가 바뀐 순간"을 직접 감지해서
+  // 그때마다 relayout을 걸어주는 방식으로 바꿔 타이밍 문제 자체를 없앰.
+  ensureMapResizeObserver(container){
+    if(_kakaoMapResizeObserver || typeof ResizeObserver==='undefined') return;
+    _kakaoMapResizeObserver = new ResizeObserver(()=>{
+      if(!_kakaoMap) return;
+      const center = _kakaoMap.getCenter();
+      kakao.maps.event.trigger(_kakaoMap, 'relayout');
+      _kakaoMap.setCenter(center);
+    });
+    _kakaoMapResizeObserver.observe(container);
+  },
+
+  // ResizeObserver를 지원하지 않는 아주 오래된 브라우저를 위한 보조 수단.
+  // (지원 브라우저에서는 위 ensureMapResizeObserver가 실제 크기 변화 시점에 알아서
+  // relayout을 걸어주므로, 아래는 별도 호출 없이도 문제가 해결됨)
   robustMapRelayout(){
     if(!_kakaoMap) return;
     const doRelayout = ()=>{
@@ -2241,7 +2265,7 @@ const App = {
   },
 
   // 버튼 세팅을 마친 뒤 지도만 크게 보고 싶을 때 켜는 집중 모드
-  // (전체화면 API는 안 쓰고, 부가 컨트롤을 숨기고 지도 높이를 뷰포트의 90%까지 늘림)
+  // (전체화면 API는 안 쓰고, 부가 컨트롤을 숨기고 지도를 화면 아래 끝까지 늘림)
   toggleMapFocus(){
     this._mapFocusMode = !this._mapFocusMode;
     const screen = document.getElementById('screen-map');
@@ -2252,8 +2276,33 @@ const App = {
       btn.classList.toggle('active', this._mapFocusMode);
       btn.textContent = this._mapFocusMode ? '↙️ 지도 작게 보기' : '🔍 지도 크게 보기';
     }
+    this.applyMapFocusHeight();
     // 컨테이너 크기가 바뀌므로 레이아웃이 확정된 뒤 relayout을 걸어줌
     this.robustMapRelayout();
+    if(this._mapFocusMode && !this._mapFocusResizeBound){
+      this._mapFocusResizeBound = true;
+      window.addEventListener('resize', ()=>{ if(this._mapFocusMode) this.applyMapFocusHeight(); });
+    }
+  },
+
+  // 우측 하단 fab 버튼(내 위치/스크롤/화면전환)이 고정 오버레이로 지도 위에 살짝
+  // 걸쳐 있어서, 집중모드에서 지도 아래쪽이 잘려 보인다는 피드백이 있었음.
+  // 실제로는 버튼이 z-index로 지도 "위"에 떠 있을 뿐 지도 렌더링 자체가 잘리는 건
+  // 아니지만, 90vh 같은 고정 비율로는 툴바 높이 등에 따라 지도 아래쪽이 화면 밖으로
+  // 밀려나 스크롤해야 보이는 경우가 있었음. 그래서 지도 컨테이너의 실제 화면상
+  // 시작 위치(top)를 읽어서 "뷰포트 맨 아래까지" 정확히 채우도록 높이를 계산함
+  // — 스크롤 없이 바로 화면 끝까지 지도가 보이고, fab 버튼은 그 위에 오버레이로만 뜸.
+  applyMapFocusHeight(){
+    const container = document.getElementById('kakaoMapContainer');
+    if(!container) return;
+    if(!this._mapFocusMode){
+      container.style.height = '';
+      return;
+    }
+    const top = container.getBoundingClientRect().top;
+    const bottomGap = 14; // 화면 맨 끝에 딱 붙지 않게 여백만 살짝
+    const h = Math.max(320, Math.round(window.innerHeight - top - bottomGap));
+    container.style.height = h + 'px';
   },
 
   toggleVillageMapVisibility(key){
