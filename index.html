@@ -1002,33 +1002,51 @@ function estimateJibunBoxSize(text, fontPx, padV, padH){
 // 지번 라벨을 겹치지 않는 자리에 놓을 화면 픽셀 좌표를 찾는다.
 // pinX,pinY: 필지 핀의 화면 픽셀 좌표. boxW,boxH: 이 라벨의 박스 크기.
 // placedBoxes: 이번 렌더링에서 이미 자리를 잡은 다른 라벨들의 박스 목록({x,y,w,h}).
-// 1) 먼저 기존과 같은 기본 위치(핀 오른쪽, 세로 중앙)를 시도하고, 겹치면 핀을
-//    중심으로 여러 각도로 조금씩 더 멀리 떨어진 자리를 순서대로 찾아본다.
-//    반경을 몇 단계까지만 늘리도록 제한해서(ringStep×maxRings) 너무 멀리
-//    이동해 화면이 어지러워지는 것을 막는다. 끝까지 못 찾으면 마지막으로
-//    시도한 자리를 그대로 반환(완전히 안 보이는 것보다는 나음).
+// 1) 기본 위치는 핀 정중앙 바로 위(지도에서 흔히 보는 "마커 + 그 위에 라벨" 모양).
+//    핀이 서로 붙어있어도 대부분은 이 자리만으로 안 겹치므로, 불필요한 이동을
+//    최소화할 수 있음. 겹칠 때만 핀을 중심으로 다른 각도·반경의 자리를 순서대로
+//    찾아보고, 그렇게 옮겨진 경우에만(moved:true) 점선을 그려 어느 핀의 지번인지
+//    표시함. 반경은 몇 단계까지만 늘리도록 제한해서(ringStep×maxRings) 너무 멀리
+//    이동해 화면이 어지러워지는 것을 막는다. 끝까지 못 찾으면 마지막으로 시도한
+//    자리를 그대로 반환(완전히 안 보이는 것보다는 나음).
 function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes){
   const gap = 4;
-  const baseR = badgeSize/2 + gap + boxW/2;
-  const boxAt = (cx, cy) => ({x: cx - boxW/2, y: cy - boxH/2, w: boxW, h: boxH});
+  const halfW = boxW/2, halfH = boxH/2;
+  const boxAt = (cx, cy) => ({x: cx - halfW, y: cy - halfH, w: boxW, h: boxH});
   const fits = (cx, cy) => !placedBoxes.some(pb => boxesOverlap(boxAt(cx, cy), pb, 3));
 
-  // 기본 위치: 핀 오른쪽, 세로 중앙 (겹침 방지가 필요 없을 때와 동일한 자리)
-  if(fits(pinX + baseR, pinY)) return {x: pinX + baseR, y: pinY, moved: false};
+  // 각도(deg)로 뻗어나갈 때, 사각형 라벨의 중심에서 그 방향 경계선까지의 거리.
+  // (직사각형이라 방향마다 다름 — 위/아래로 갈 땐 높이의 절반, 좌/우로 갈 땐
+  // 너비의 절반이 기준이 되고, 대각선은 그 사이 값이 됨)
+  const extentForAngle = (deg) => {
+    const rad = deg * Math.PI/180;
+    const c = Math.abs(Math.cos(rad)), s = Math.abs(Math.sin(rad));
+    if(c < 1e-6) return halfH / s;
+    if(s < 1e-6) return halfW / c;
+    return Math.min(halfW / c, halfH / s);
+  };
+  const posAt = (deg, extraR) => {
+    const rad = deg * Math.PI/180;
+    const r = badgeSize/2 + gap + extentForAngle(deg) + extraR;
+    return {x: pinX + Math.cos(rad)*r, y: pinY + Math.sin(rad)*r};
+  };
+
+  // 기본 위치: 핀 정중앙 위쪽(화면 좌표는 위로 갈수록 y가 작아지므로 -90도)
+  const DEFAULT_DEG = -90;
+  const p0 = posAt(DEFAULT_DEG, 0);
+  if(fits(p0.x, p0.y)) return {x: p0.x, y: p0.y, moved: false};
 
   const ringStep = Math.max(10, Math.round(badgeSize * 0.75));
   const maxRings = 5;
-  // 오른쪽/위/아래를 먼저 시도하고, 왼쪽은 마지막에(핀 자체 배지와 더 가까워 보일 수 있어서)
-  const angleOrderDeg = [-30, 30, -60, 60, -90, 90, -120, 120, 0, 150, -150, 180];
-  let fallback = {x: pinX + baseR, y: pinY};
-  for(let ring=1; ring<=maxRings; ring++){
-    const r = baseR + ringStep*ring;
+  // 위쪽을 다시 시도(더 멀리)한 뒤, 위쪽에 가까운 대각선 → 좌우 → 아래쪽 순서로 탐색
+  const angleOrderDeg = [-90, -60, -120, 0, 180, -30, -150, 30, 150, 90, 60, 120];
+  let fallback = p0;
+  for(let ring=0; ring<=maxRings; ring++){
+    const extraR = ringStep*ring;
     for(const deg of angleOrderDeg){
-      const rad = deg * Math.PI/180;
-      const cx = pinX + Math.cos(rad)*r;
-      const cy = pinY + Math.sin(rad)*r;
-      fallback = {x: cx, y: cy};
-      if(fits(cx, cy)) return {x: cx, y: cy, moved: true};
+      const c = posAt(deg, extraR);
+      fallback = c;
+      if(fits(c.x, c.y)) return {x: c.x, y: c.y, moved: true};
     }
   }
   return {x: fallback.x, y: fallback.y, moved: true};
@@ -3131,20 +3149,18 @@ const App = {
     this._mapParcelCache = parcelList;
     const hasOrder = this.flatOrder && this.flatOrder.length>0;
 
-    // 필지가 다닥다닥 붙어있으면 지번 텍스트끼리 겹쳐서 안 보이는 문제(첨부 스크린샷
-    // 같은 경우)를 막기 위한 디클러터. 화면이 충분히 확대되어 있을 때만(=화면 축척이
-    // 대략 50m 수준 이하로, 픽셀당 실제 거리가 짧을 때만) 켜고, 그보다 축소된 화면
-    // (여러 마을/지역이 한눈에 보이는 수준)에서는 지금까지처럼 핀 바로 옆에 지번을
-    // 붙여서 보여줌 — 안 그러면 많이 축소했을 때 지번들이 사방으로 튀어 보여 오히려
-    // 더 어지러워짐.
-    const mmp = this.mapMetersPerPixel();
-    let declutterOn = !!(showParcels && showJibun && mmp !== null && mmp <= MAP_DECLUTTER_METERS_PER_PIXEL);
-    const proj = declutterOn ? _kakaoMap.getProjection() : null;
-    // 혹시 이 카카오맵 SDK 버전에서 필요한 좌표 변환 함수를 못 찾으면(정상적으론
-    // 항상 있어야 하지만, 만약을 대비) 디클러터를 끄고 기존 방식으로 안전하게 표시.
-    if(declutterOn && (!proj || typeof proj.containerPointFromCoords !== 'function' || typeof proj.coordsFromContainerPoint !== 'function')){
-      declutterOn = false;
-    }
+    // 지번 라벨은 기본적으로 핀 정중앙 바로 위에 표시(흔히 보는 "마커+라벨" 모양).
+    // 핀이 서로 붙어있어서 그 기본 자리에서마저 다른 지번과 겹칠 때만(=디클러터가
+    // 켜져 있을 때만) 핀 주변의 겹치지 않는 자리로 옮기고 점선을 그음. 디클러터는
+    // 화면이 충분히 확대되어 있을 때만(=화면 축척이 대략 50m 수준 이하로, 픽셀당
+    // 실제 거리가 짧을 때만) 켜지며, 그보다 축소된 화면(여러 마을/지역이 한눈에
+    // 보이는 수준)에서는 겹침 검사 없이 항상 핀 위 기본 자리에 고정 — 안 그러면
+    // 많이 축소했을 때 지번들이 사방으로 튀어 보여 오히려 더 어지러워짐.
+    const mapContainerEl = document.getElementById('kakaoMapContainer');
+    const proj = (mapContainerEl && mapContainerEl.clientWidth) ? _kakaoMap.getProjection() : null;
+    const canPlaceJibun = !!(proj && typeof proj.containerPointFromCoords === 'function' && typeof proj.coordsFromContainerPoint === 'function');
+    const mmp = canPlaceJibun ? this.mapMetersPerPixel() : null;
+    const declutterOn = !!(showParcels && showJibun && mmp !== null && mmp <= MAP_DECLUTTER_METERS_PER_PIXEL);
     const placedJibunBoxes = []; // 이번 렌더링에서 이미 자리 잡은 지번 라벨들의 화면 픽셀 박스
 
     if(showParcels){
@@ -3168,15 +3184,20 @@ const App = {
             box-shadow:0 1px 3px rgba(0,0,0,.4);color:#fff;font-size:${badgeFont}px;font-weight:700;
             display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;">${badgeLabel}</div>`;
 
-        if(hasJibun && declutterOn && proj){
-          // 디클러터 모드: 핀과 지번 라벨을 서로 다른 오버레이로 따로 그려서, 라벨을
-          // 핀 주변의 겹치지 않는 자리로 옮길 수 있게 함. 원래 자리(핀 바로 오른쪽)에서
-          // 옮겨진 경우엔 어느 필지의 지번인지 알 수 있도록 핀↔라벨 사이에 얇은
-          // 점선을 그어줌.
+        if(hasJibun && canPlaceJibun){
+          // 핀과 지번 라벨을 서로 다른 오버레이로 따로 그려서, 필요할 때 라벨만
+          // 핀 주변의 겹치지 않는 자리로 옮길 수 있게 함.
           const boxSize = estimateJibunBoxSize(p.jibun, jibunFont, jibunPadV, jibunPadH);
           const pinPoint = proj.containerPointFromCoords(pos);
-          const placement = findJibunLabelPos(pinPoint.x, pinPoint.y, badgeSize, boxSize.w, boxSize.h, placedJibunBoxes);
-          placedJibunBoxes.push({x: placement.x - boxSize.w/2, y: placement.y - boxSize.h/2, w: boxSize.w, h: boxSize.h});
+          let placement;
+          if(declutterOn){
+            placement = findJibunLabelPos(pinPoint.x, pinPoint.y, badgeSize, boxSize.w, boxSize.h, placedJibunBoxes);
+            placedJibunBoxes.push({x: placement.x - boxSize.w/2, y: placement.y - boxSize.h/2, w: boxSize.w, h: boxSize.h});
+          } else {
+            // 디클러터가 꺼져 있을 때는 겹침 검사 없이 항상 핀 바로 위 기본 자리
+            const gap = 4;
+            placement = { x: pinPoint.x, y: pinPoint.y - (badgeSize/2 + gap + boxSize.h/2), moved: false };
+          }
           const labelLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(placement.x, placement.y));
 
           if(placement.moved){
@@ -3217,16 +3238,22 @@ const App = {
           });
           labelOverlay.setMap(_kakaoMap);
           _kakaoMapMarkers.push(labelOverlay);
-        } else {
-          const jibunTag = hasJibun ? `<div style="margin-left:3px;background:#fff;border:1.5px solid ${color};color:${color};
+        } else if(hasJibun){
+          // proj를 못 쓸 때(지도가 아직 완전히 준비되기 전 등)를 대비한 안전한
+          // 대체 표시 — 겹침 방지는 없어도 최소한 지번은 핀 옆에 보이게 함.
+          const jibunTag = `<div style="margin-left:3px;background:#fff;border:1.5px solid ${color};color:${color};
               font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;
-              box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>` : '';
+              box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>`;
           const overlay = new kakao.maps.CustomOverlay({
             position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 5,
-            content: `<div style="display:flex;align-items:center;">
-              ${pinContent}
-              ${jibunTag}
-            </div>`
+            content: `<div style="display:flex;align-items:center;">${pinContent}${jibunTag}</div>`
+          });
+          overlay.setMap(_kakaoMap);
+          _kakaoMapMarkers.push(overlay);
+        } else {
+          const overlay = new kakao.maps.CustomOverlay({
+            position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 5,
+            content: pinContent
           });
           overlay.setMap(_kakaoMap);
           _kakaoMapMarkers.push(overlay);
