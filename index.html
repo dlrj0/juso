@@ -1002,13 +1002,15 @@ function estimateJibunBoxSize(text, fontPx, padV, padH){
 // 지번 라벨을 겹치지 않는 자리에 놓을 화면 픽셀 좌표를 찾는다.
 // pinX,pinY: 필지 핀의 화면 픽셀 좌표. boxW,boxH: 이 라벨의 박스 크기.
 // placedBoxes: 이번 렌더링에서 이미 자리를 잡은 다른 라벨들의 박스 목록({x,y,w,h}).
-// 1) 기본 위치는 핀 정중앙 바로 위(지도에서 흔히 보는 "마커 + 그 위에 라벨" 모양).
-//    핀이 서로 붙어있어도 대부분은 이 자리만으로 안 겹치므로, 불필요한 이동을
-//    최소화할 수 있음. 겹칠 때만 핀을 중심으로 다른 각도·반경의 자리를 순서대로
-//    찾아보고, 그렇게 옮겨진 경우에만(moved:true) 점선을 그려 어느 핀의 지번인지
-//    표시함. 반경은 몇 단계까지만 늘리도록 제한해서(ringStep×maxRings) 너무 멀리
-//    이동해 화면이 어지러워지는 것을 막는다. 끝까지 못 찾으면 마지막으로 시도한
-//    자리를 그대로 반환(완전히 안 보이는 것보다는 나음).
+// 1) 기본 위치는 핀과 정확히 같은 자리(핀 위에 라벨을 그대로 포갬). 핀은 원형
+//    CustomOverlay(zIndex 낮음), 라벨은 같은 좌표의 별도 CustomOverlay(zIndex 높음)로
+//    그려서 라벨이 핀보다 항상 앞에 보이게 함 — 핀이 라벨에 가려져도 원형이라 위치
+//    정보 자체는 라벨이 그대로 대신 전달하므로 문제 없고, 불필요한 이동(따라서
+//    불필요한 점선)도 없앨 수 있음. 다른 라벨과 겹칠 때만 핀을 중심으로 다른
+//    각도·반경의 자리를 순서대로 찾아보고, 그렇게 옮겨진 경우에만(moved:true) 점선을
+//    그려 어느 핀의 지번인지 표시함. 반경은 몇 단계까지만 늘리도록 제한해서
+//    (ringStep×maxRings) 너무 멀리 이동해 화면이 어지러워지는 것을 막는다. 끝까지
+//    못 찾으면 마지막으로 시도한 자리를 그대로 반환(완전히 안 보이는 것보다는 나음).
 function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes){
   const gap = 4;
   const halfW = boxW/2, halfH = boxH/2;
@@ -1031,9 +1033,8 @@ function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes){
     return {x: pinX + Math.cos(rad)*r, y: pinY + Math.sin(rad)*r};
   };
 
-  // 기본 위치: 핀 정중앙 위쪽(화면 좌표는 위로 갈수록 y가 작아지므로 -90도)
-  const DEFAULT_DEG = -90;
-  const p0 = posAt(DEFAULT_DEG, 0);
+  // 기본 위치: 핀과 완전히 같은 좌표(포개어 놓기). 다른 라벨과 안 겹치면 옮기지 않음.
+  const p0 = {x: pinX, y: pinY};
   if(fits(p0.x, p0.y)) return {x: p0.x, y: p0.y, moved: false};
 
   const ringStep = Math.max(10, Math.round(badgeSize * 0.75));
@@ -3157,13 +3158,15 @@ const App = {
     this._mapParcelCache = parcelList;
     const hasOrder = this.flatOrder && this.flatOrder.length>0;
 
-    // 지번 라벨은 기본적으로 핀 정중앙 바로 위에 표시(흔히 보는 "마커+라벨" 모양).
-    // 핀이 서로 붙어있어서 그 기본 자리에서마저 다른 지번과 겹칠 때만(=디클러터가
-    // 켜져 있을 때만) 핀 주변의 겹치지 않는 자리로 옮기고 점선을 그음. 디클러터는
-    // 화면이 충분히 확대되어 있을 때만(=화면 축척이 대략 50m 수준 이하로, 픽셀당
-    // 실제 거리가 짧을 때만) 켜지며, 그보다 축소된 화면(여러 마을/지역이 한눈에
-    // 보이는 수준)에서는 겹침 검사 없이 항상 핀 위 기본 자리에 고정 — 안 그러면
-    // 많이 축소했을 때 지번들이 사방으로 튀어 보여 오히려 더 어지러워짐.
+    // 지번 라벨은 기본적으로 핀과 정확히 같은 자리에 포개어 표시(핀은 뒤 레이어,
+    // 라벨은 앞 레이어). 핀은 원형이라 라벨에 가려져도 위치 정보는 문제없이 라벨이
+    // 대신 전달하므로, 안 겹치는 한 라벨을 옮길 필요가 전혀 없음. 다른 지번 라벨과
+    // 겹칠 때만(=디클러터가 켜져 있을 때만) 핀 주변의 겹치지 않는 자리로 옮기고
+    // 점선을 그음. 디클러터는 화면이 충분히 확대되어 있을 때만(=화면 축척이 대략
+    // 50m 수준 이하로, 픽셀당 실제 거리가 짧을 때만) 켜지며, 그보다 축소된 화면
+    // (여러 마을/지역이 한눈에 보이는 수준)에서는 겹침 검사 없이 항상 핀과 같은
+    // 자리에 고정 — 안 그러면 많이 축소했을 때 지번들이 사방으로 튀어 보여 오히려
+    // 더 어지러워짐.
     const mapContainerEl = document.getElementById('kakaoMapContainer');
     const proj = (mapContainerEl && mapContainerEl.clientWidth) ? _kakaoMap.getProjection() : null;
     const canPlaceJibun = !!(proj && typeof proj.containerPointFromCoords === 'function' && typeof proj.coordsFromContainerPoint === 'function');
@@ -3202,9 +3205,8 @@ const App = {
             placement = findJibunLabelPos(pinPoint.x, pinPoint.y, badgeSize, boxSize.w, boxSize.h, placedJibunBoxes);
             placedJibunBoxes.push({x: placement.x - boxSize.w/2, y: placement.y - boxSize.h/2, w: boxSize.w, h: boxSize.h});
           } else {
-            // 디클러터가 꺼져 있을 때는 겹침 검사 없이 항상 핀 바로 위 기본 자리
-            const gap = 4;
-            placement = { x: pinPoint.x, y: pinPoint.y - (badgeSize/2 + gap + boxSize.h/2), moved: false };
+            // 디클러터가 꺼져 있을 때는 겹침 검사 없이 항상 핀과 같은 기본 자리(포개기)
+            placement = { x: pinPoint.x, y: pinPoint.y, moved: false };
           }
           const labelLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(placement.x, placement.y));
 
@@ -3248,13 +3250,16 @@ const App = {
           _kakaoMapMarkers.push(labelOverlay);
         } else if(hasJibun){
           // proj를 못 쓸 때(지도가 아직 완전히 준비되기 전 등)를 대비한 안전한
-          // 대체 표시 — 겹침 방지는 없어도 최소한 지번은 핀 옆에 보이게 함.
-          const jibunTag = `<div style="margin-left:3px;background:#fff;border:1.5px solid ${color};color:${color};
+          // 대체 표시 — 겹침 방지는 없어도, 평소와 똑같이 핀과 라벨을 같은 자리에
+          // 포개어(라벨이 앞) 최소한 지번은 보이게 함.
+          const jibunTag = `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
+              background:#fff;border:1.5px solid ${color};color:${color};
               font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;
               box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>`;
+          const pinAbs = `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);">${pinContent}</div>`;
           const overlay = new kakao.maps.CustomOverlay({
             position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 5,
-            content: `<div style="display:flex;align-items:center;">${pinContent}${jibunTag}</div>`
+            content: `<div style="position:relative;">${pinAbs}${jibunTag}</div>`
           });
           overlay.setMap(_kakaoMap);
           _kakaoMapMarkers.push(overlay);
