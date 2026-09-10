@@ -2226,30 +2226,40 @@ const App = {
   // 바꾸면 고쳐졌던 것도, 그때서야 브라우저가 강제로 resize를 발생시켜준 것뿐).
   // → 추측 대신 ResizeObserver로 지도 div의 "실제 크기가 바뀐 순간"을 직접 감지해서
   // 그때마다 relayout을 걸어주는 방식으로 바꿔 타이밍 문제 자체를 없앰.
+  // relayout은 "지도 크기가 이렇게 바뀌었다"는 것만 알려줄 뿐, 이미 그려져 있던
+  // 타일 이미지 자체를 다시 그리라고 강제하진 않음. 그래서 컨테이너가 넓어져도
+  // 새로 드러난 오른쪽/아래쪽 영역은 relayout+setCenter(같은 좌표)만으론 빈 타일로
+  // 남는 경우가 있었음 — 브라우저 배율을 바꾸면 고쳐졌던 건, 그때 화면 전체가
+  // 강제로 다시 그려지면서 "우연히" 지도도 다시 그려졌기 때문.
+  // → 확대→원래 레벨로 순간적으로 두 번 전환해서 "줌 레벨이 바뀌었다"고 인식시키면
+  // 지도가 보이는 영역 전체를 다시 그리므로, 같은 효과를 코드로 확실하게 재현함.
+  forceMapRedraw(){
+    if(!_kakaoMap) return;
+    const center = _kakaoMap.getCenter();
+    kakao.maps.event.trigger(_kakaoMap, 'relayout');
+    _kakaoMap.setCenter(center);
+    const level = _kakaoMap.getLevel();
+    if(typeof level === 'number'){
+      _kakaoMap.setLevel(level + 1, { anchor: center });
+      _kakaoMap.setLevel(level, { anchor: center });
+    }
+  },
+
+  // 브라우저가 컨테이너의 새 크기를 실제로 확정한 "그 순간"을 ResizeObserver로
+  // 직접 감지해서 forceMapRedraw를 걸어줌(추측성 setTimeout 타이밍 문제 자체를 없앰).
   ensureMapResizeObserver(container){
     if(_kakaoMapResizeObserver || typeof ResizeObserver==='undefined') return;
-    _kakaoMapResizeObserver = new ResizeObserver(()=>{
-      if(!_kakaoMap) return;
-      const center = _kakaoMap.getCenter();
-      kakao.maps.event.trigger(_kakaoMap, 'relayout');
-      _kakaoMap.setCenter(center);
-    });
+    _kakaoMapResizeObserver = new ResizeObserver(()=>{ this.forceMapRedraw(); });
     _kakaoMapResizeObserver.observe(container);
   },
 
   // ResizeObserver를 지원하지 않는 아주 오래된 브라우저를 위한 보조 수단.
   // (지원 브라우저에서는 위 ensureMapResizeObserver가 실제 크기 변화 시점에 알아서
-  // relayout을 걸어주므로, 아래는 별도 호출 없이도 문제가 해결됨)
+  // forceMapRedraw를 걸어주므로, 아래는 별도 호출 없이도 문제가 해결됨)
   robustMapRelayout(){
     if(!_kakaoMap) return;
-    const doRelayout = ()=>{
-      if(!_kakaoMap) return;
-      const center = _kakaoMap.getCenter();
-      kakao.maps.event.trigger(_kakaoMap, 'relayout');
-      _kakaoMap.setCenter(center);
-    };
-    requestAnimationFrame(()=>{ requestAnimationFrame(doRelayout); });
-    setTimeout(doRelayout, 250);
+    requestAnimationFrame(()=>{ requestAnimationFrame(()=>this.forceMapRedraw()); });
+    setTimeout(()=>this.forceMapRedraw(), 250);
   },
 
   // 일반지도 ↔ 항공사진(라벨 포함) 전환
