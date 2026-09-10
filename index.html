@@ -3161,18 +3161,37 @@ const App = {
     // 지번 라벨은 기본적으로 핀과 정확히 같은 자리에 포개어 표시(핀은 뒤 레이어,
     // 라벨은 앞 레이어). 핀은 원형이라 라벨에 가려져도 위치 정보는 문제없이 라벨이
     // 대신 전달하므로, 안 겹치는 한 라벨을 옮길 필요가 전혀 없음. 다른 지번 라벨과
-    // 겹칠 때만(=디클러터가 켜져 있을 때만) 핀 주변의 겹치지 않는 자리로 옮기고
-    // 점선을 그음. 디클러터는 화면이 충분히 확대되어 있을 때만(=화면 축척이 대략
-    // 50m 수준 이하로, 픽셀당 실제 거리가 짧을 때만) 켜지며, 그보다 축소된 화면
-    // (여러 마을/지역이 한눈에 보이는 수준)에서는 겹침 검사 없이 항상 핀과 같은
-    // 자리에 고정 — 안 그러면 많이 축소했을 때 지번들이 사방으로 튀어 보여 오히려
-    // 더 어지러워짐.
+    // 겹치거나, 자기 핀이 아닌 "다른" 핀과 겹칠 때만(=디클러터가 켜져 있을 때만)
+    // 핀 주변의 겹치지 않는 자리로 옮기고 점선을 그음 — 라벨이 남의 핀 위에 걸치면
+    // 어느 필지 것인지 헷갈리기 때문. 디클러터는 화면이 충분히 확대되어 있을 때만
+    // (=화면 축척이 대략 50m 수준 이하로, 픽셀당 실제 거리가 짧을 때만) 켜지며,
+    // 그보다 축소된 화면(여러 마을/지역이 한눈에 보이는 수준)에서는 겹침 검사 없이
+    // 항상 핀과 같은 자리에 고정 — 안 그러면 많이 축소했을 때 지번들이 사방으로
+    // 튀어 보여 오히려 더 어지러워짐.
     const mapContainerEl = document.getElementById('kakaoMapContainer');
     const proj = (mapContainerEl && mapContainerEl.clientWidth) ? _kakaoMap.getProjection() : null;
     const canPlaceJibun = !!(proj && typeof proj.containerPointFromCoords === 'function' && typeof proj.coordsFromContainerPoint === 'function');
     const mmp = canPlaceJibun ? this.mapMetersPerPixel() : null;
     const declutterOn = !!(showParcels && showJibun && mmp !== null && mmp <= MAP_DECLUTTER_METERS_PER_PIXEL);
     const placedJibunBoxes = []; // 이번 렌더링에서 이미 자리 잡은 지번 라벨들의 화면 픽셀 박스
+
+    // 라벨이 "다른" 핀과 겹치는지도 피하려면, 라벨을 배치하기 전에 이번 렌더링에서
+    // 실제로 그려질 모든 핀의 화면 픽셀 좌표를 먼저 알아야 함(아래 forEach와 똑같은
+    // 필터 조건을 그대로 적용). idx는 parcelList 안에서의 순번이라, 라벨을 놓을 때
+    // "자기 자신의 핀"만 이 목록에서 제외하고 검사하면 됨.
+    const jibunAllPinPts = []; // {idx, x, y}
+    if(declutterOn){
+      const avoidBadgeSize = Math.round(24 * pinScale);
+      parcelList.forEach((p,i)=>{
+        if(!p.coord) return;
+        if(statusFilter==='undone' && p.done) return;
+        if(statusFilter==='done' && !p.done) return;
+        const pv = this.villages[p.villageKey];
+        if(pv && pv.mapHidden) return;
+        const pt = proj.containerPointFromCoords(new kakao.maps.LatLng(p.coord.lat, p.coord.lng));
+        jibunAllPinPts.push({idx:i, x:pt.x, y:pt.y, size:avoidBadgeSize});
+      });
+    }
 
     if(showParcels){
       parcelList.forEach((p,i)=>{
