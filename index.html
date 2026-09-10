@@ -173,6 +173,16 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .vg-head .chevron.collapsed svg{transform:rotate(0deg);}
   .vg-head .chevron:not(.collapsed) svg{transform:rotate(180deg);}
 
+  /* ---- map screen: 지도유형 전환 / 집중모드 ---- */
+  .map-toolbar{display:flex;gap:8px;flex-wrap:wrap;margin-top:2px;}
+  .map-toolbar .gps-btn{flex:1;min-width:100px;}
+  body.map-focus-mode .container{max-width:100%;padding-left:8px;padding-right:8px;}
+  #screen-map.map-focus #mapExtraControls,
+  #screen-map.map-focus .backlink,
+  #screen-map.map-focus #mapFocusHint{display:none;}
+  #screen-map.map-focus #kakaoMapContainer{height:90vh;min-height:420px;}
+  #screen-map.map-focus .map-toolbar{margin-bottom:6px;}
+
   .parcel-list{border-top:1px solid var(--surface-2);}
   .parcel-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--surface-2);}
   .parcel-row:last-child{border-bottom:none;}
@@ -507,53 +517,61 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   <div id="screen-map" class="hidden">
     <span class="backlink" onclick="App.goScreen('route')">← 계산 화면으로</span>
 
-    <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:2px;">
-      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers()"> 🏘️ 마을
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers()"> 📍 필지
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers()"> ➰ 필지 순서선(직선)
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers()"> 🛣️ 선택 구간 길찾기(도로)
-      </label>
-      <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-        완료여부
-        <select id="mapStatusFilter" onchange="App.renderMapMarkers()"
-          style="border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12.5px;background:#fff;">
-          <option value="all">전체</option>
-          <option value="undone">미완료만</option>
-          <option value="done">완료만</option>
-        </select>
-      </label>
+    <div class="map-toolbar">
+      <button type="button" class="gps-btn active" id="mapTypeRoadBtn" onclick="App.setMapType('ROADMAP')">🗺️ 일반지도</button>
+      <button type="button" class="gps-btn" id="mapTypeSkyBtn" onclick="App.setMapType('HYBRID')">🛰️ 항공사진</button>
+      <button type="button" class="gps-btn" id="mapFocusBtn" onclick="App.toggleMapFocus()">🔍 지도 크게 보기</button>
     </div>
-    <div class="gps-status hidden" id="routeLineStatus"></div>
 
-    <div class="nav-select-bar">
-      <button type="button" id="navSelectModeBtn" class="gps-btn" onclick="App.toggleNavSelectMode()">🧭 핀 선택 길찾기 모드</button>
-      <span class="hint" id="navSelectHint" style="margin:0;">모드를 켠 뒤 필지 핀을 순서대로 눌러 선택하세요 (예: 4→5→7 순으로 누르면 그 순서 그대로 경로를 찾아요).</span>
-    </div>
-    <div id="navSelectPanel" class="nav-select-panel hidden">
-      <div id="navSelectChips" class="nav-select-chips"></div>
-      <div class="row-btns" style="margin-top:6px;">
-        <button onclick="App.fetchNavRoute()">🛣️ 이 순서로 길찾기</button>
-        <button onclick="App.clearNavSelection()">선택 지우기</button>
+    <div id="mapExtraControls">
+      <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:8px;">
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers()"> 🏘️ 마을
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers()"> 📍 필지
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers()"> ➰ 필지 순서선(직선)
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers()"> 🛣️ 선택 구간 길찾기(도로)
+        </label>
+        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
+          완료여부
+          <select id="mapStatusFilter" onchange="App.renderMapMarkers()"
+            style="border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12.5px;background:#fff;">
+            <option value="all">전체</option>
+            <option value="undone">미완료만</option>
+            <option value="done">완료만</option>
+          </select>
+        </label>
       </div>
-      <div id="navRouteStatus" class="gps-status" style="margin-top:6px;"></div>
-    </div>
+      <div class="gps-status hidden" id="routeLineStatus"></div>
 
-    <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
-      <button type="button" onclick="App.setAllVillagesMapVisible(true)">마을 전체 켜기</button>
-      <button type="button" onclick="App.setAllVillagesMapVisible(false)">마을 전체 끄기</button>
+      <div class="nav-select-bar">
+        <button type="button" id="navSelectModeBtn" class="gps-btn" onclick="App.toggleNavSelectMode()">🧭 핀 선택 길찾기 모드</button>
+        <span class="hint" id="navSelectHint" style="margin:0;">모드를 켠 뒤 필지 핀을 순서대로 눌러 선택하세요 (예: 4→5→7 순으로 누르면 그 순서 그대로 경로를 찾아요).</span>
+      </div>
+      <div id="navSelectPanel" class="nav-select-panel hidden">
+        <div id="navSelectChips" class="nav-select-chips"></div>
+        <div class="row-btns" style="margin-top:6px;">
+          <button onclick="App.fetchNavRoute()">🛣️ 이 순서로 길찾기</button>
+          <button onclick="App.clearNavSelection()">선택 지우기</button>
+        </div>
+        <div id="navRouteStatus" class="gps-status" style="margin-top:6px;"></div>
+      </div>
+
+      <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
+        <button type="button" onclick="App.setAllVillagesMapVisible(true)">마을 전체 켜기</button>
+        <button type="button" onclick="App.setAllVillagesMapVisible(false)">마을 전체 끄기</button>
+      </div>
+      <div class="village-legend hidden" id="mapVillageLegend"></div>
+      <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요.</p>
     </div>
-    <div class="village-legend hidden" id="mapVillageLegend"></div>
-    <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요.</p>
 
     <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
-    <p class="hint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
+    <p class="hint" id="mapFocusHint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
   </div>
 
 </div>
@@ -1696,6 +1714,7 @@ const App = {
     const gpsBtn = document.getElementById('fabGpsBtn');
     if(gpsBtn) gpsBtn.classList.toggle('hidden', name!=='map');
     if(name!=='map') this.stopMapGps();
+    if(name!=='map' && this._mapFocusMode) this.toggleMapFocus();
     if(GEOCODE_PROVIDER==='kakao') this.renderKakaoQuota();
   },
 
@@ -2176,6 +2195,7 @@ const App = {
         center: new kakao.maps.LatLng(35.9678, 126.7369),
         level: 8
       });
+      _kakaoMap.setMapTypeId(kakao.maps.MapTypeId[this._currentMapType || 'ROADMAP']);
     }
     // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
     // 전환된 직후엔 브라우저 레이아웃이 아직 확정되지 않아 컨테이너 크기를 잘못 읽는 경우가
@@ -2185,6 +2205,36 @@ const App = {
       if(_kakaoMap) kakao.maps.event.trigger(_kakaoMap, 'relayout');
     }, 0);
     this.renderMapMarkers();
+  },
+
+  // 일반지도 ↔ 항공사진(라벨 포함) 전환
+  setMapType(type){
+    this._currentMapType = type;
+    if(_kakaoMap && kakao.maps.MapTypeId[type]){
+      _kakaoMap.setMapTypeId(kakao.maps.MapTypeId[type]);
+    }
+    const roadBtn = document.getElementById('mapTypeRoadBtn');
+    const skyBtn = document.getElementById('mapTypeSkyBtn');
+    if(roadBtn) roadBtn.classList.toggle('active', type==='ROADMAP');
+    if(skyBtn) skyBtn.classList.toggle('active', type==='HYBRID');
+  },
+
+  // 버튼 세팅을 마친 뒤 지도만 크게 보고 싶을 때 켜는 집중 모드
+  // (전체화면 API는 안 쓰고, 부가 컨트롤을 숨기고 지도 높이를 뷰포트의 90%까지 늘림)
+  toggleMapFocus(){
+    this._mapFocusMode = !this._mapFocusMode;
+    const screen = document.getElementById('screen-map');
+    if(screen) screen.classList.toggle('map-focus', this._mapFocusMode);
+    document.body.classList.toggle('map-focus-mode', this._mapFocusMode);
+    const btn = document.getElementById('mapFocusBtn');
+    if(btn){
+      btn.classList.toggle('active', this._mapFocusMode);
+      btn.textContent = this._mapFocusMode ? '↙️ 지도 작게 보기' : '🔍 지도 크게 보기';
+    }
+    // 컨테이너 크기가 바뀌므로 레이아웃이 끝난 다음 틱에 relayout을 걸어줌
+    setTimeout(()=>{
+      if(_kakaoMap) kakao.maps.event.trigger(_kakaoMap, 'relayout');
+    }, 50);
   },
 
   toggleVillageMapVisibility(key){
