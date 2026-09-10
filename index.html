@@ -2205,11 +2205,27 @@ const App = {
     // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
     // 전환된 직후엔 브라우저 레이아웃이 아직 확정되지 않아 컨테이너 크기를 잘못 읽는 경우가
     // 있음(특히 최초 생성 시 지도가 왼쪽 위에 아주 작게 찌그러져 나타나는 문제의 원인).
-    // 레이아웃이 끝난 다음 틱에 항상 relayout을 강제로 걸어 컨테이너 실제 크기를 다시 읽게 함.
-    setTimeout(()=>{
-      if(_kakaoMap) kakao.maps.event.trigger(_kakaoMap, 'relayout');
-    }, 0);
+    this.robustMapRelayout();
     this.renderMapMarkers();
+  },
+
+  // 카카오맵은 자신이 그려진 div의 크기가 바뀌어도 스스로 알아채지 못해서
+  // kakao.maps.event.trigger(map,'relayout')로 "지금 크기 다시 재봐" 라고 알려줘야 함.
+  // 문제는 이걸 너무 이른 타이밍(setTimeout 0ms 등)에 부르면 브라우저가 아직
+  // 새 레이아웃(예: 집중모드로 넓어진 컨테이너 폭)을 확정하기 전이라 relayout이
+  // 옛날 크기 기준으로 동작해버려서, 새로 넓어진 오른쪽 영역이 빈 타일(워터마크)로
+  // 남는 문제가 있었음. rAF를 두 번 중첩해서 "다음 페인트가 끝난 뒤"까지 기다리고,
+  // 혹시 그래도 늦게 끝나는 경우를 대비해 250ms 뒤에 한 번 더 안전하게 재호출함.
+  robustMapRelayout(){
+    if(!_kakaoMap) return;
+    const doRelayout = ()=>{
+      if(!_kakaoMap) return;
+      const center = _kakaoMap.getCenter();
+      kakao.maps.event.trigger(_kakaoMap, 'relayout');
+      _kakaoMap.setCenter(center);
+    };
+    requestAnimationFrame(()=>{ requestAnimationFrame(doRelayout); });
+    setTimeout(doRelayout, 250);
   },
 
   // 일반지도 ↔ 항공사진(라벨 포함) 전환
@@ -2236,10 +2252,8 @@ const App = {
       btn.classList.toggle('active', this._mapFocusMode);
       btn.textContent = this._mapFocusMode ? '↙️ 지도 작게 보기' : '🔍 지도 크게 보기';
     }
-    // 컨테이너 크기가 바뀌므로 레이아웃이 끝난 다음 틱에 relayout을 걸어줌
-    setTimeout(()=>{
-      if(_kakaoMap) kakao.maps.event.trigger(_kakaoMap, 'relayout');
-    }, 50);
+    // 컨테이너 크기가 바뀌므로 레이아웃이 확정된 뒤 relayout을 걸어줌
+    this.robustMapRelayout();
   },
 
   toggleVillageMapVisibility(key){
