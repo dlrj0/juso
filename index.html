@@ -471,6 +471,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
       </div>
       <div class="geo-status" id="parcelGeoStatus">필지 위치 확인 전</div>
+      <div class="hint hidden" id="parcelGeoFailList" style="background:var(--warn-soft);border-radius:8px;padding:8px 10px;"></div>
 
       <label class="fieldlabel" style="margin-top:10px;">출발지(선택)</label>
       <div class="searchbar">
@@ -826,7 +827,7 @@ function subscribeSharedKakaoQuota(){
   });
 }
 
-// TMAP 길찾기(경로) 쿼터는 기존엔 localStorage에만 저장돼서, 브라우저(기기)를 바꾸거나
+// TMAP(길찾기) 경로 쿼터는 기존엔 localStorage에만 저장돼서, 브라우저(기기)를 바꾸거나
 // 캐시를 지우면 "이 브라우저 기준"으로 카운트가 0부터 다시 시작함. 하지만 실제로는
 // 내장 공용 TMAP_APP_KEY_DEFAULT 하나를 여러 사용자가 나눠 쓰기 때문에, TMAP 콘솔에서
 // 보는 실사용량은 이미 소진돼도 이 화면에는 반영이 안 되는 문제가 있었음.
@@ -2175,9 +2176,14 @@ const App = {
         center: new kakao.maps.LatLng(35.9678, 126.7369),
         level: 8
       });
-    } else {
-      setTimeout(()=> kakao.maps.event.trigger(_kakaoMap, 'relayout'), 0);
     }
+    // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
+    // 전환된 직후엔 브라우저 레이아웃이 아직 확정되지 않아 컨테이너 크기를 잘못 읽는 경우가
+    // 있음(특히 최초 생성 시 지도가 왼쪽 위에 아주 작게 찌그러져 나타나는 문제의 원인).
+    // 레이아웃이 끝난 다음 틱에 항상 relayout을 강제로 걸어 컨테이너 실제 크기를 다시 읽게 함.
+    setTimeout(()=>{
+      if(_kakaoMap) kakao.maps.event.trigger(_kakaoMap, 'relayout');
+    }, 0);
     this.renderMapMarkers();
   },
 
@@ -3113,6 +3119,7 @@ const App = {
     const cancelBtn = document.getElementById('parcelGeoCancelBtn');
     cancelBtn.classList.remove('hidden');
     let ok=0, fail=0;
+    const failItems = [];
     for(let i=0;i<targets.length;i++){
       if(this._geoCancel) break;
       const p = targets[i];
@@ -3121,16 +3128,46 @@ const App = {
       try{
         const r = await this.geocodeAddress(fullAddr);
         if(r.ok){ p.coord = {lat:r.lat, lng:r.lng, source:GEOCODE_PROVIDER+'-api'}; ok++; }
-        else fail++;
-      }catch(e){ fail++; }
+        else { fail++; failItems.push(fullAddr); }
+      }catch(e){ fail++; failItems.push(fullAddr); }
       if((i+1)%20===0) this.renderRoute();
       if(paceMs) await delay(paceMs);
     }
     cancelBtn.classList.add('hidden');
     this.renderRoute();
-    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건` + (this._geoCancel?' (중단됨)':'') + (fail>0?' (실패한 필지는 지번 순서대로 마을 그룹 안에 남아있어요, 카카오 쿼터 소진 여부도 설정에서 확인해보세요)':'');
+    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건` + (this._geoCancel?' (중단됨)':'');
+    this.renderParcelGeoFailList(failItems);
   },
   cancelParcelGeocode(){ this._geoCancel = true; },
+
+  // 위치 확인에 실패한 필지 주소를 목록으로 보여줌. 여러 건일 때 하나하나
+  // 상태 문구를 스크롤해서 찾는 대신 한눈에 볼 수 있게 하기 위함.
+  renderParcelGeoFailList(failItems){
+    const box = document.getElementById('parcelGeoFailList');
+    if(!box) return;
+    if(!failItems || failItems.length===0){
+      box.classList.add('hidden');
+      box.innerHTML = '';
+      this._lastFailAddrs = [];
+      return;
+    }
+    this._lastFailAddrs = failItems;
+    box.classList.remove('hidden');
+    box.innerHTML = `<b>⚠ 위치 확인 실패 ${failItems.length}건</b>
+      <button type="button" onclick="App.copyFailAddrs()" style="margin-left:6px;border:1px solid var(--border);background:#fff;border-radius:6px;padding:2px 8px;font-size:11.5px;cursor:pointer;">목록 복사</button>
+      <ul style="margin:6px 0 0 18px;padding:0;">${failItems.map(a=>`<li>${a}</li>`).join('')}</ul>`;
+  },
+  copyFailAddrs(){
+    const text = (this._lastFailAddrs||[]).join('\n');
+    if(!text) return;
+    if(navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(text).then(()=>alert('복사했어요.')).catch(()=>{
+        alert('복사에 실패했어요. 목록을 직접 드래그해서 복사해주세요.');
+      });
+    } else {
+      alert('복사에 실패했어요. 목록을 직접 드래그해서 복사해주세요.');
+    }
+  },
 
   async searchStartCandidates(){
     const input = document.getElementById('startAddrInput');
