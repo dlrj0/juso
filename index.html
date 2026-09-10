@@ -1196,7 +1196,7 @@ const App = {
     });
     window.addEventListener('scroll', ()=>this.updateFabScrollIcon(), {passive:true});
     this.updateFabScrollIcon();
-    window.addEventListener('beforeunload', ()=>{ this.persistSession(true); });
+    window.addEventListener('beforeunload', ()=>{ if(!this._skipPersistOnUnload) this.persistSession(true); });
     this.restoreSession();
   },
 
@@ -1286,6 +1286,11 @@ const App = {
   },
   discardSessionAndRestart(){
     if(!confirm('지금까지 작업한 내용을 지우고 새로 시작할까요?')) return;
+    // clearSession() 직후 location.reload()가 beforeunload를 다시 발생시켜서
+    // persistSession이 메모리에 남아있던 기존 데이터를 그대로 재저장해버리면
+    // "새로 시작하기"를 눌러도 화면이 그대로 유지되는 것처럼 보이는 문제가 있었음.
+    // 리로드 전까지 저장을 완전히 막아서 방지함.
+    this._skipPersistOnUnload = true;
     this.clearSession();
     location.reload();
   },
