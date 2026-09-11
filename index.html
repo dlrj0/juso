@@ -178,7 +178,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .map-toolbar .gps-btn{flex:1;min-width:100px;}
   .pin-scale-control{
     display:flex;align-items:center;gap:5px;font-size:13px;background:var(--surface-2);
-    border:1px solid var(--border);border-radius:8px;padding:3px 8px 3px 10px;
+    border:1px solid var(--border);border-radius:8px;padding:3px 8px 3px 10px;flex-wrap:wrap;
   }
   .pin-scale-btn{
     width:22px;height:22px;border-radius:50%;border:1px solid var(--border);background:var(--surface);
@@ -186,6 +186,17 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   }
   .pin-scale-btn:active{ background:var(--accent-soft); }
   #mapPinScaleLabel{ min-width:34px;text-align:center;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text-mute); }
+  /* 조절 대상(핀/라벨/점선) 선택 UI. 평소엔 현재 대상 이름만 살짝 밑줄 쳐서 보여주고,
+     탭하면 3개 버튼 줄이 펼쳐짐 — 항상 펼쳐두면 좁은 화면에서 줄이 하나 더 생겨서
+     번잡해 보이므로 필요할 때만 펼치는 방식을 씀. */
+  .pin-scale-target-label{ cursor:pointer;user-select:none;white-space:nowrap;text-decoration:underline dotted;text-underline-offset:2px; }
+  .pin-scale-target-picker{ display:flex;gap:4px;width:100%;order:99; }
+  .pin-scale-target-picker.hidden{ display:none; }
+  .pin-scale-target-btn{
+    flex:1;font-size:11.5px;padding:4px 2px;border-radius:6px;border:1px solid var(--border);
+    background:var(--surface);color:var(--text);white-space:nowrap;
+  }
+  .pin-scale-target-btn.active{ background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700; }
   body.map-focus-mode .container{max-width:100%;padding-left:8px;padding-right:8px;}
   #screen-map.map-focus #mapExtraControls,
   #screen-map.map-focus .backlink,
@@ -545,23 +556,23 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div id="mapExtraControls">
       <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:8px;">
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers()"> 🏘️ 마을
+          <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers(false)"> 🏘️ 마을
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers()"> 📍 필지
+          <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers(false)"> 📍 필지
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers()"> ➰ 필지 순서선(직선)
+          <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers(false)"> ➰ 필지 순서선(직선)
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers()"> 🛣️ 선택 구간 길찾기(도로)
+          <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers(false)"> 🛣️ 선택 구간 길찾기(도로)
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowJibun" checked onchange="App.renderMapMarkers()"> 🔖 지번 표시
+          <input type="checkbox" id="mapShowJibun" checked onchange="App.renderMapMarkers(false)"> 🔖 지번 표시
         </label>
         <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
           완료여부
-          <select id="mapStatusFilter" onchange="App.renderMapMarkers()"
+          <select id="mapStatusFilter" onchange="App.renderMapMarkers(false)"
             style="border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12.5px;background:#fff;">
             <option value="all">전체</option>
             <option value="undone">미완료만</option>
@@ -569,11 +580,16 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
           </select>
         </label>
         <div class="pin-scale-control">
-          <span>📍 핀 크기</span>
-          <button type="button" class="pin-scale-btn" onclick="App.adjustPinScale(-1)" title="핀/지번 작게">−</button>
+          <span class="pin-scale-target-label" id="mapScaleTargetLabel" onclick="App.toggleScaleTargetPicker()" title="탭하면 핀/라벨/점선 중 조절할 항목을 고를 수 있어요">📍 핀 크기 ▾</span>
+          <button type="button" class="pin-scale-btn" onclick="App.adjustMapScale(-1)" title="작게">−</button>
           <span id="mapPinScaleLabel">100%</span>
-          <button type="button" class="pin-scale-btn" onclick="App.adjustPinScale(1)" title="핀/지번 크게">+</button>
-          <button type="button" class="pin-scale-btn" onclick="App.resetPinScale()" title="기본 크기로 되돌리기">↺</button>
+          <button type="button" class="pin-scale-btn" onclick="App.adjustMapScale(1)" title="크게">+</button>
+          <button type="button" class="pin-scale-btn" onclick="App.resetMapScale()" title="기본 크기로 되돌리기">↺</button>
+          <div class="pin-scale-target-picker hidden" id="mapScaleTargetPicker">
+            <button type="button" class="pin-scale-target-btn active" data-target="pin" onclick="App.setMapScaleTarget('pin')">📍 핀</button>
+            <button type="button" class="pin-scale-target-btn" data-target="label" onclick="App.setMapScaleTarget('label')">🔖 라벨</button>
+            <button type="button" class="pin-scale-target-btn" data-target="line" onclick="App.setMapScaleTarget('line')">╌ 점선</button>
+          </div>
         </div>
       </div>
       <div class="gps-status hidden" id="routeLineStatus"></div>
@@ -594,9 +610,10 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
         <button type="button" onclick="App.setAllVillagesMapVisible(true)">마을 전체 켜기</button>
         <button type="button" onclick="App.setAllVillagesMapVisible(false)">마을 전체 끄기</button>
+        <button type="button" onclick="App.fitMapToVisible()" title="지금 켜져있는 핀들이 다 보이도록 확대/축소를 맞춰줘요">🔎 전체보기</button>
       </div>
       <div class="village-legend hidden" id="mapVillageLegend"></div>
-      <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요.</p>
+      <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요. 토글을 바꿔도 지도 확대/이동 상태는 그대로 유지되고, "전체보기"를 누르면 그때만 화면에 맞춰 다시 맞춰져요.</p>
     </div>
 
     <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
@@ -999,6 +1016,17 @@ function boxesOverlap(a, b, pad){
   pad = (pad === undefined) ? 2 : pad;
   return !(a.x+a.w+pad < b.x || b.x+b.w+pad < a.x || a.y+a.h+pad < b.y || b.y+b.h+pad < a.y);
 }
+// 원(핀, 중심 cx,cy 반지름 r)이 사각형(라벨 박스)과 겹치는지(여유 padding 포함) 검사.
+// "사각형에서 원 중심까지 가장 가까운 점"을 구해서 그 점까지의 거리가 반지름보다
+// 작으면 겹친 것으로 판정 — 라벨(사각형)이 다른 필지의 핀(원)을 가리지 않게 하는 데 씀.
+function circleBoxOverlap(cx, cy, r, box, pad){
+  pad = (pad === undefined) ? 2 : pad;
+  const bx0 = box.x - pad, by0 = box.y - pad, bx1 = box.x+box.w+pad, by1 = box.y+box.h+pad;
+  const nearestX = Math.max(bx0, Math.min(cx, bx1));
+  const nearestY = Math.max(by0, Math.min(cy, by1));
+  const dx = cx - nearestX, dy = cy - nearestY;
+  return (dx*dx + dy*dy) < (r*r);
+}
 // 실제 폰트로 측정하는 대신, 글자수 기반으로 지번 라벨 박스 크기를 대략 추정.
 // (정확한 canvas measureText까지는 필요 없고, 겹침 판정에 쓸 정도의 근사치면 충분함)
 function estimateJibunBoxSize(text, fontPx, padV, padH){
@@ -1010,20 +1038,36 @@ function estimateJibunBoxSize(text, fontPx, padV, padH){
 // 지번 라벨을 겹치지 않는 자리에 놓을 화면 픽셀 좌표를 찾는다.
 // pinX,pinY: 필지 핀의 화면 픽셀 좌표. boxW,boxH: 이 라벨의 박스 크기.
 // placedBoxes: 이번 렌더링에서 이미 자리를 잡은 다른 라벨들의 박스 목록({x,y,w,h}).
+// avoidPins: 이번 렌더링에서 그려질 모든 핀의 위치/크기 목록({idx,x,y,size}). selfIdx와
+//   idx가 같은(=자기 자신의 핀) 항목은 검사에서 제외 — 기본 위치(핀과 포개기)는 자기
+//   핀과는 당연히 겹쳐도 되기 때문.
+// [버그 수정] 예전엔 avoidPins를 계산만 해두고 실제로 이 함수에 전달/검사하지 않아서,
+// 라벨이 "다른" 필지의 핀과 겹쳐도(자기 라벨끼리만 안 겹치면) 전혀 옮겨지지 않는
+// 문제가 있었음(필지가 다닥다닥 붙은 구역에서 핀 여러 개가 라벨 뒤에 가려 보이던 원인).
+// → fits() 판정에 "다른 핀과도 안 겹쳐야 함" 조건을 추가해서 실제로 동작하게 함.
 // 1) 기본 위치는 핀과 정확히 같은 자리(핀 위에 라벨을 그대로 포갬). 핀은 원형
 //    CustomOverlay(zIndex 낮음), 라벨은 같은 좌표의 별도 CustomOverlay(zIndex 높음)로
 //    그려서 라벨이 핀보다 항상 앞에 보이게 함 — 핀이 라벨에 가려져도 원형이라 위치
 //    정보 자체는 라벨이 그대로 대신 전달하므로 문제 없고, 불필요한 이동(따라서
-//    불필요한 점선)도 없앨 수 있음. 다른 라벨과 겹칠 때만 핀을 중심으로 다른
-//    각도·반경의 자리를 순서대로 찾아보고, 그렇게 옮겨진 경우에만(moved:true) 점선을
+//    불필요한 점선)도 없앨 수 있음. 다른 라벨이나 다른 핀과 겹칠 때만 핀을 중심으로
+//    다른 각도·반경의 자리를 순서대로 찾아보고, 그렇게 옮겨진 경우에만(moved:true) 점선을
 //    그려 어느 핀의 지번인지 표시함. 반경은 몇 단계까지만 늘리도록 제한해서
 //    (ringStep×maxRings) 너무 멀리 이동해 화면이 어지러워지는 것을 막는다. 끝까지
 //    못 찾으면 마지막으로 시도한 자리를 그대로 반환(완전히 안 보이는 것보다는 나음).
-function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes){
+function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes, avoidPins, selfIdx){
+  avoidPins = avoidPins || [];
   const gap = 4;
   const halfW = boxW/2, halfH = boxH/2;
   const boxAt = (cx, cy) => ({x: cx - halfW, y: cy - halfH, w: boxW, h: boxH});
-  const fits = (cx, cy) => !placedBoxes.some(pb => boxesOverlap(boxAt(cx, cy), pb, 3));
+  const fits = (cx, cy) => {
+    const box = boxAt(cx, cy);
+    if(placedBoxes.some(pb => boxesOverlap(box, pb, 3))) return false;
+    for(const pin of avoidPins){
+      if(pin.idx === selfIdx) continue; // 자기 자신의 핀은 겹쳐도 됨(기본 포개기 위치)
+      if(circleBoxOverlap(pin.x, pin.y, pin.size/2, box, 2)) return false;
+    }
+    return true;
+  };
 
   // 각도(deg)로 뻗어나갈 때, 사각형 라벨의 중심에서 그 방향 경계선까지의 거리.
   // (직사각형이라 방향마다 다름 — 위/아래로 갈 땐 높이의 절반, 좌/우로 갈 땐
@@ -1041,7 +1085,7 @@ function findJibunLabelPos(pinX, pinY, badgeSize, boxW, boxH, placedBoxes){
     return {x: pinX + Math.cos(rad)*r, y: pinY + Math.sin(rad)*r};
   };
 
-  // 기본 위치: 핀과 완전히 같은 좌표(포개어 놓기). 다른 라벨과 안 겹치면 옮기지 않음.
+  // 기본 위치: 핀과 완전히 같은 좌표(포개어 놓기). 다른 라벨/다른 핀과 안 겹치면 옮기지 않음.
   const p0 = {x: pinX, y: pinY};
   if(fits(p0.x, p0.y)) return {x: p0.x, y: p0.y, moved: false};
 
@@ -2439,29 +2483,68 @@ const App = {
     _kakaoRelayoutTimers.push(setTimeout(()=>this.forceMapRedraw(), 600));
   },
 
-  // 필지 핀 아이콘/지번 글자 크기를 몇 단계로 조절. 슬라이더 대신 -/+ 버튼으로
-  // 미리 정해둔 단계(steps) 사이를 이동하게 해서, 손가락으로 슬라이더를 세밀하게
-  // 맞추기 힘든 모바일에서도 다루기 쉽게 함. ↺ 버튼으로 언제든 기본값(100%)으로
-  // 되돌릴 수 있음.
-  _pinScaleSteps: [0.5,0.6,0.7,0.8,0.9,1,1.15,1.3,1.5,1.75,2],
-  adjustPinScale(dir){
-    const steps = this._pinScaleSteps;
-    const cur = this._mapPinScale || 1;
+  // 핀/지번 라벨/점선(라벨을 옮겼을 때 핀과 잇는 연결선) 크기를 각각 따로 몇 단계로
+  // 조절. 슬라이더 대신 -/+ 버튼으로 미리 정해둔 단계(steps) 사이를 이동하게 해서,
+  // 손가락으로 슬라이더를 세밀하게 맞추기 힘든 모바일에서도 다루기 쉽게 함. ↺ 버튼으로
+  // 언제든 기본값(100%)으로 되돌릴 수 있음.
+  // → 예전엔 핀 크기 하나로 라벨까지 같이 커지고 작아졌는데, 필지가 다닥다닥 붙어있는
+  // 구역에서는 "핀은 작게 유지하고 라벨/점선만 조절"하고 싶은 경우가 있어서 세 항목을
+  // 분리함. 화면 하단의 작은 탭(📍핀/🔖라벨/╌점선)으로 지금 -/+/↺가 어느 항목을
+  // 조절하는지 고를 수 있고, 세 항목의 배율은 서로 독립적으로 저장됨.
+  _mapScaleSteps: [0.5,0.6,0.7,0.8,0.9,1,1.15,1.3,1.5,1.75,2],
+  _mapScaleTargetMeta: {
+    pin:   { label:'📍 핀 크기' },
+    label: { label:'🔖 라벨 크기' },
+    line:  { label:'╌ 점선 굵기' }
+  },
+  _mapScaleTarget: 'pin', // 지금 -/+/↺가 조절하는 대상: 'pin' | 'label' | 'line'
+  _scaleKeyForTarget(){
+    if(this._mapScaleTarget==='label') return '_mapLabelScale';
+    if(this._mapScaleTarget==='line') return '_mapLineScale';
+    return '_mapPinScale';
+  },
+  // 탭을 눌러 대상을 고르는 작은 선택 줄을 펼치고/접음. 접혀 있을 때도 현재 대상
+  // 이름은 항상 보이므로("📍 핀 크기 ▾" 등) 뭘 조절 중인지 헷갈리지 않음.
+  toggleScaleTargetPicker(){
+    const picker = document.getElementById('mapScaleTargetPicker');
+    if(picker) picker.classList.toggle('hidden');
+  },
+  setMapScaleTarget(target){
+    this._mapScaleTarget = target;
+    document.querySelectorAll('.pin-scale-target-btn').forEach(b=>{
+      b.classList.toggle('active', b.getAttribute('data-target')===target);
+    });
+    this.updatePinScaleLabel();
+    const picker = document.getElementById('mapScaleTargetPicker');
+    if(picker) picker.classList.add('hidden'); // 고르고 나면 다시 접어서 공간을 아낌
+  },
+  adjustMapScale(dir){
+    const steps = this._mapScaleSteps;
+    const key = this._scaleKeyForTarget();
+    const cur = this[key] || 1;
     let idx = 0, bestDiff = Infinity;
     steps.forEach((v,i)=>{ const d=Math.abs(v-cur); if(d<bestDiff){ bestDiff=d; idx=i; } });
     idx = Math.min(steps.length-1, Math.max(0, idx + dir));
-    this._mapPinScale = steps[idx];
+    this[key] = steps[idx];
     this.updatePinScaleLabel();
-    this.renderMapMarkers();
+    // fitBounds=false: 크기만 바뀌는 거라 지도 확대/이동 상태는 건드리지 않음
+    // (전체보기가 필요하면 "🔎 전체보기" 버튼을 따로 누르면 됨).
+    this.renderMapMarkers(false);
   },
-  resetPinScale(){
-    this._mapPinScale = 1;
+  resetMapScale(){
+    this[this._scaleKeyForTarget()] = 1;
     this.updatePinScaleLabel();
-    this.renderMapMarkers();
+    this.renderMapMarkers(false);
   },
   updatePinScaleLabel(){
+    const key = this._scaleKeyForTarget();
     const el = document.getElementById('mapPinScaleLabel');
-    if(el) el.textContent = Math.round((this._mapPinScale || 1) * 100) + '%';
+    if(el) el.textContent = Math.round((this[key] || 1) * 100) + '%';
+    const labelEl = document.getElementById('mapScaleTargetLabel');
+    if(labelEl){
+      const meta = this._mapScaleTargetMeta[this._mapScaleTarget] || this._mapScaleTargetMeta.pin;
+      labelEl.textContent = meta.label + ' ▾';
+    }
   },
 
   // 일반지도 ↔ 항공사진(라벨 포함) 전환
@@ -2639,11 +2722,22 @@ const App = {
     const v = this.villages[key];
     if(!v) return;
     v.mapHidden = !v.mapHidden;
-    this.renderMapMarkers();
+    this.renderMapMarkers(false); // 토글만으로는 지도 확대/이동 상태를 건드리지 않음
   },
   setAllVillagesMapVisible(visible){
     this.villageOrder.forEach(k=>{ this.villages[k].mapHidden = !visible; });
-    this.renderMapMarkers();
+    this.renderMapMarkers(false); // 위와 동일 — 필요하면 "🔎 전체보기"로 직접 맞춤
+  },
+  // "🔎 전체보기" 버튼용: 지금 켜져 있는(필터를 통과한) 핀들이 화면에 다 들어오도록
+  // 명시적으로 한 번만 맞춰줌. 체크박스/토글은 더 이상 자동으로 이 동작을 하지 않으므로,
+  // 전체 범위로 다시 보고 싶을 때는 이 버튼을 눌러야 함.
+  fitMapToVisible(){
+    if(!_kakaoMap) return;
+    if(_kakaoLastBounds){
+      _kakaoMap.setBounds(_kakaoLastBounds);
+    } else {
+      alert('지금 화면에 표시할 핀이 없어요.');
+    }
   },
 
   // 필지/마을 핀 클릭 — "핀 선택 길찾기 모드"가 켜져 있으면 팝업 대신 선택 목록에
@@ -3118,7 +3212,9 @@ const App = {
     const showParcels = document.getElementById('mapShowParcels').checked;
     const showJibunBox = document.getElementById('mapShowJibun');
     const showJibun = showJibunBox ? showJibunBox.checked : true;
-    const pinScale = this._mapPinScale || 1; // 핀 아이콘/지번 크기 배율(기본 1 = 100%)
+    const pinScale = this._mapPinScale || 1; // 핀 아이콘 크기 배율(기본 1 = 100%)
+    const labelScale = this._mapLabelScale || 1; // 지번 라벨 크기 배율(핀과 독립)
+    const lineScale = this._mapLineScale || 1; // 라벨-핀 연결 점선 굵기 배율(핀과 독립)
     const showRouteLine = document.getElementById('mapShowRouteLine').checked;
     const showNavRouteBox = document.getElementById('mapShowNavRoute');
     const showNavRoute = showNavRouteBox ? showNavRouteBox.checked : false;
@@ -3223,9 +3319,9 @@ const App = {
         const color = colorMap[p.villageKey] || '#ff5a3c';
         const badgeSize = Math.round(24 * pinScale);
         const badgeFont = Math.max(8, Math.round(11 * pinScale));
-        const jibunFont = Math.max(8, Math.round(11 * pinScale));
-        const jibunPadV = Math.max(0, Math.round(1 * pinScale));
-        const jibunPadH = Math.max(3, Math.round(6 * pinScale));
+        const jibunFont = Math.max(8, Math.round(11 * labelScale));
+        const jibunPadV = Math.max(0, Math.round(1 * labelScale));
+        const jibunPadH = Math.max(3, Math.round(6 * labelScale));
         const hasJibun = !!(p.jibun && showJibun);
         const pinContent = `<div onclick="App.showParcelPin(${i})" title="${p.addr.replace(/"/g,'&quot;')}"
             style="width:${badgeSize}px;height:${badgeSize}px;border-radius:50%;background:${color};border:2px solid #fff;
@@ -3239,7 +3335,7 @@ const App = {
           const pinPoint = proj.containerPointFromCoords(pos);
           let placement;
           if(declutterOn){
-            placement = findJibunLabelPos(pinPoint.x, pinPoint.y, badgeSize, boxSize.w, boxSize.h, placedJibunBoxes);
+            placement = findJibunLabelPos(pinPoint.x, pinPoint.y, badgeSize, boxSize.w, boxSize.h, placedJibunBoxes, jibunAllPinPts, i);
             placedJibunBoxes.push({x: placement.x - boxSize.w/2, y: placement.y - boxSize.h/2, w: boxSize.w, h: boxSize.h});
           } else {
             // 디클러터가 꺼져 있을 때는 겹침 검사 없이 항상 핀과 같은 기본 자리(포개기)
@@ -3259,11 +3355,15 @@ const App = {
             const x1 = pinPoint.x - minX, y1 = pinPoint.y - minY;
             const x2 = placement.x - minX, y2 = placement.y - minY;
             const originLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(minX, minY));
+            // 점선 굵기/간격도 lineScale에 비례해서 커지도록(굵기만 키우고 간격은 그대로면
+            // 배율을 올렸을 때 오히려 실선처럼 보여서 "점선" 느낌이 사라짐).
+            const leaderStrokeW = Math.max(0.5, +(1.2 * lineScale).toFixed(2));
+            const leaderDash = `${(1*lineScale).toFixed(2)},${(3*lineScale).toFixed(2)}`;
             const leaderOverlay = new kakao.maps.CustomOverlay({
               position: originLatLng, xAnchor: 0, yAnchor: 0, zIndex: 3,
               content: `<svg width="${lineW}" height="${lineH}" style="pointer-events:none;display:block;">
-                <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="1.2"
-                  stroke-dasharray="1,3" stroke-linecap="round" stroke-opacity="0.85"/>
+                <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${leaderStrokeW}"
+                  stroke-dasharray="${leaderDash}" stroke-linecap="round" stroke-opacity="0.85"/>
               </svg>`
             });
             leaderOverlay.setMap(_kakaoMap);
