@@ -926,6 +926,14 @@ let _kakaoMap = null;
 let _kakaoMapMarkers = [];
 let _kakaoMapResizeObserver = null;
 let _kakaoLastBounds = null;        // renderMapMarkers()가 마지막으로 계산한 "필지 전체가 보여야 할 범위"
+// [버그 수정] 지도 화면 캡처(captureMapScreenshot) 진행 중에는 true로 켜둠.
+// 캡처 중 브라우저가 "이 탭을 공유 중" 표시줄을 띄우면서 뷰포트 높이가 미세하게
+// 바뀌면 kakaoMapContainer 크기도 같이 바뀌는데, 이걸 ResizeObserver가 감지해서
+// forceMapRedraw()를 부르면 사용자가 손으로 확대해둔 상태가 _kakaoLastBounds(필지
+// 전체보기 범위)로 리셋되어버려 캡처 사진이 축소된 상태로 찍히는 문제가 있었음.
+// 이 플래그가 켜져 있는 동안엔 forceMapRedraw()가 절대 setBounds로 시야를 되돌리지
+// 않고 지금 보고 있는 중심/줌 그대로 유지함.
+let _kakaoCaptureInProgress = false;
 let _kakaoRelayoutTimers = [];      // robustMapRelayout()이 예약한 setTimeout id들(화면 이탈 시 취소용)
 let _kakaoRelayoutRafIds = [];      // 위와 동일 목적의 requestAnimationFrame id들
 // 지번 겹침 방지 배치(디클러터)를 켤 기준. 화면 1픽셀이 실제로 몇 미터에 해당하는지를
@@ -2370,7 +2378,10 @@ const App = {
     if(!screenEl || screenEl.classList.contains('hidden')) return; // 화면이 안 보이면 손대지 않음
     const center = _kakaoMap.getCenter();
     kakao.maps.event.trigger(_kakaoMap, 'relayout');
-    if(_kakaoLastBounds){
+    // [버그 수정] 화면 캡처가 진행 중일 땐 컨테이너 크기가 실제로 바뀌었더라도
+    // _kakaoLastBounds로 시야를 되돌리지 않음(사용자가 확대해둔 상태를 그대로 캡처해야
+    // 하므로). 이때도 redraw 자체는 필요하므로 현재 중심/줌을 유지한 채로만 강제 갱신.
+    if(_kakaoLastBounds && !_kakaoCaptureInProgress){
       _kakaoMap.setBounds(_kakaoLastBounds);
     } else {
       _kakaoMap.setCenter(center);
@@ -2497,6 +2508,10 @@ const App = {
     const fabStack = document.getElementById('fabStack');
     if(btn){ btn.disabled = true; btn.style.opacity = '0.5'; }
 
+    // [버그 수정] 캡처 중 화면 공유 표시줄 때문에 생기는 리사이즈에도 지도가 확대/축소
+    // 상태를 잃지 않도록, 캡처가 끝날 때까지 forceMapRedraw()의 자동 시야 리셋을 막음.
+    _kakaoCaptureInProgress = true;
+
     let stream = null;
     let video = null;
     try{
@@ -2573,6 +2588,9 @@ const App = {
       if(stream) stream.getTracks().forEach(t=>t.stop());
       if(video){ video.srcObject = null; video.remove(); }
       if(btn){ btn.disabled = false; btn.style.opacity = ''; }
+      // 공유 표시줄이 사라지면서 뷰포트가 다시 한 번 바뀌어 뒤늦게 resize가 들어올 수
+      // 있어, 살짝 여유를 두고서야 플래그를 끔(그 사이 forceMapRedraw가 불려도 안전).
+      setTimeout(()=>{ _kakaoCaptureInProgress = false; }, 500);
     }
   },
 
