@@ -3861,16 +3861,26 @@ const App = {
     const status = document.getElementById('parcelGeoStatus');
     const cancelBtn = document.getElementById('parcelGeoCancelBtn');
     cancelBtn.classList.remove('hidden');
-    let ok=0, fail=0;
+    let ok=0, fail=0, apiCalls=0, cacheHits=0;
     const failItems = [];
+    // 같은 주소(소재지+지번)가 이번에 처리하는 필지들 안에서 이미 나온 적 있는지
+    // 추적함. 지번(본번/부번)이 매핑 안 됐거나 비어있으면 여러 필지가 "소재지"만으로
+    // 같은 키를 갖게 돼서, 캐시 재사용(API 미호출)이 쌓여 조회량이 예상보다 훨씬 적게
+    // 줄어드는 것처럼 보일 수 있음 — 이걸 사용자가 바로 알 수 있도록 구분해서 보여줌.
+    const seenKeysThisRun = new Set();
     for(let i=0;i<targets.length;i++){
       if(this._geoCancel) break;
       const p = targets[i];
       const fullAddr = fullGeocodeAddr(p.addr, p.jibun);
-      status.textContent = `조회 중 (${i+1}/${targets.length}) · ${fullAddr}`;
+      const willReuseKey = seenKeysThisRun.has(fullAddr) || !!this.parcelCoordCache[fullAddr.trim()];
+      seenKeysThisRun.add(fullAddr);
+      status.textContent = `조회 중 (${i+1}/${targets.length}) · ${fullAddr}${willReuseKey ? ' (캐시 재사용 예정 — 이 배치 안에 같은 주소가 있어요)' : ''}`;
       try{
         const r = await this.geocodeAddress(fullAddr);
-        if(r.ok){ p.coord = {lat:r.lat, lng:r.lng, source:GEOCODE_PROVIDER+'-api'}; ok++; }
+        if(r.ok){
+          p.coord = {lat:r.lat, lng:r.lng, source:GEOCODE_PROVIDER+'-api'}; ok++;
+          if(r.cached) cacheHits++; else apiCalls++;
+        }
         else { fail++; failItems.push(fullAddr); }
       }catch(e){ fail++; failItems.push(fullAddr); }
       if((i+1)%20===0) this.renderRoute();
@@ -3878,7 +3888,10 @@ const App = {
     }
     cancelBtn.classList.add('hidden');
     this.renderRoute();
-    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건` + (this._geoCancel?' (중단됨)':'');
+    const cacheNote = cacheHits>0
+      ? ` (그 중 API 실제 호출 ${apiCalls}건, 같은 주소라 캐시 재사용 ${cacheHits}건 — 조회량은 API 호출 건수만큼만 줄어들어요)`
+      : '';
+    status.textContent = `완료 · 성공 ${ok}건, 실패 ${fail}건${cacheNote}` + (this._geoCancel?' (중단됨)':'');
     this.renderParcelGeoFailList(failItems);
   },
   cancelParcelGeocode(){ this._geoCancel = true; },
