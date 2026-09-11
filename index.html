@@ -186,7 +186,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     color:var(--text);font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;
   }
   .pin-scale-btn:active{ background:var(--accent-soft); }
-  #mapPinScaleLabel{ min-width:34px;text-align:center;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text-mute); }
+  #mapPinScaleLabel{ min-width:34px;text-align:center;font-variant-numeric:tabular-nums;font-size:12.5px;color:var(--text-mute);cursor:pointer;text-decoration:underline dotted;text-underline-offset:2px; }
+  #mapPinScaleLabel:active{ color:var(--accent); }
   /* 조절 대상(핀/라벨/점선) 선택 UI. 예전엔 이 목록이 펼쳐질 때 줄바꿈으로 아래 내용을
      밀어냈는데(레이아웃 자체가 늘어남), 그러면 탭할 때마다 화면이 출렁여 불편했음.
      → position:absolute로 핀 크기 컨트롤 바로 아래에 "떠 있는" 작은 드롭다운으로
@@ -588,7 +589,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
         <div class="pin-scale-control">
           <span class="pin-scale-target-label" id="mapScaleTargetLabel" onclick="App.toggleScaleTargetPicker()" title="탭하면 핀/라벨/점선 중 조절할 항목을 고를 수 있어요">📍 핀 크기 ▾</span>
           <button type="button" class="pin-scale-btn" onclick="App.adjustMapScale(-1)" title="작게">−</button>
-          <span id="mapPinScaleLabel">100%</span>
+          <span id="mapPinScaleLabel" onclick="App.resetMapScale()" title="탭하면 지금 고른 항목(핀/라벨/점선)이 100%로 초기화돼요">100%</span>
           <button type="button" class="pin-scale-btn" onclick="App.adjustMapScale(1)" title="크게">+</button>
           <button type="button" class="pin-scale-btn" onclick="App.resetMapScale()" title="기본 크기로 되돌리기">↺</button>
           <div class="pin-scale-target-picker hidden" id="mapScaleTargetPicker">
