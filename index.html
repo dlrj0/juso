@@ -62,11 +62,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     display:inline-block;background:var(--accent);color:#fff;padding:11px 22px;border-radius:10px;
     font-size:14.5px;font-weight:600;border:none;
   }
-  .privacy-note{
-    margin-top:16px;font-size:12px;color:var(--text-mute);background:var(--surface-2);
-    border-radius:10px;padding:10px 12px;line-height:1.5;
-  }
-
   /* ---- mapping screen ---- */
   .card{background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:16px;margin-bottom:12px;}
   .field-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px 0;border-bottom:1px solid var(--surface-2);}
@@ -270,7 +265,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .empty-note{text-align:center;padding:50px 20px;color:var(--text-mute);font-size:13.5px;line-height:1.6;}
   .backlink{display:inline-block;margin-bottom:14px;font-size:12.5px;color:var(--text-mute);cursor:pointer;}
   .hidden{display:none !important;}
-  .warn-badge{background:var(--warn-soft);color:var(--warn);font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:100px;margin-left:6px;}
 
   .gearbtn{background:rgba(255,255,255,0.12);border:none;color:#fff;border-radius:8px;width:30px;height:30px;font-size:14px;flex-shrink:0;}
   .inquirybtn{
@@ -354,8 +348,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-select-chips .ns-chip button{border:none;background:transparent;color:#ff5a3c;font-size:14px;
     line-height:1;cursor:pointer;padding:2px 4px;}
   .nav-select-chips .ns-empty{font-size:12.5px;color:var(--text-mute);}
-  .nav-route-summary{font-size:12.5px;color:var(--text);background:var(--accent-soft);border-radius:8px;
-    padding:8px 10px;margin-top:8px;line-height:1.5;}
   .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
   .modal{position:fixed;inset:0;background:rgba(20,24,19,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal-card{background:#fff;border-radius:16px 16px 0 0;padding:20px 18px 28px;width:100%;max-width:640px;max-height:82vh;overflow-y:auto;}
@@ -425,7 +417,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <body>
 
 <div class="topbar">
-  <div class="brand"><b>현장조사 동선 정리</b><span id="topbarSub">FIELD ROUTE</span></div>
+  <div class="brand" onclick="location.reload()" title="새로고침" style="cursor:pointer;"><b>현장조사 동선 정리</b><span id="topbarSub">FIELD ROUTE</span></div>
   <div class="topbar-right">
     <button class="inquirybtn" onclick="App.openInquiry()" title="문의하기">💬 문의</button>
     <span id="quotaBadge" class="quotabadge">📊 조회량 확인중…</span>
@@ -3377,7 +3369,7 @@ const App = {
             const originLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(minX, minY));
             // 점선 굵기/간격도 lineScale에 비례해서 커지도록(굵기만 키우고 간격은 그대로면
             // 배율을 올렸을 때 오히려 실선처럼 보여서 "점선" 느낌이 사라짐).
-            const leaderStrokeW = Math.max(0.5, +(1.2 * lineScale).toFixed(2));
+            const leaderStrokeW = Math.max(0.5, +(1.6 * lineScale).toFixed(2));
             const leaderDash = `${(1*lineScale).toFixed(2)},${(3*lineScale).toFixed(2)}`;
             const leaderOverlay = new kakao.maps.CustomOverlay({
               position: originLatLng, xAnchor: 0, yAnchor: 0, zIndex: 3,
@@ -3399,9 +3391,8 @@ const App = {
 
           const labelOverlay = new kakao.maps.CustomOverlay({
             position: labelLatLng, yAnchor: 0.5, xAnchor: 0.5, zIndex: 6,
-            content: `<div onclick="App.showParcelPin(${i})" style="cursor:pointer;background:#fff;border:1.5px solid ${color};color:${color};
-              font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;
-              box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>`
+            content: `<div onclick="App.showParcelPin(${i})" style="cursor:pointer;background:transparent;border:1.5px solid ${color};color:${color};
+              font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;">${p.jibun}</div>`
           });
           labelOverlay.setMap(_kakaoMap);
           _kakaoMapMarkers.push(labelOverlay);
@@ -3410,9 +3401,8 @@ const App = {
           // 대체 표시 — 겹침 방지는 없어도, 평소와 똑같이 핀과 라벨을 같은 자리에
           // 포개어(라벨이 앞) 최소한 지번은 보이게 함.
           const jibunTag = `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);
-              background:#fff;border:1.5px solid ${color};color:${color};
-              font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;
-              box-shadow:0 1px 2px rgba(0,0,0,.25);">${p.jibun}</div>`;
+              background:transparent;border:1.5px solid ${color};color:${color};
+              font-size:${jibunFont}px;font-weight:700;padding:${jibunPadV}px ${jibunPadH}px;border-radius:6px;white-space:nowrap;">${p.jibun}</div>`;
           const pinAbs = `<div style="position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);">${pinContent}</div>`;
           const overlay = new kakao.maps.CustomOverlay({
             position: pos, yAnchor: 0.5, xAnchor: 0.5, zIndex: 5,
