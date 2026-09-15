@@ -3681,6 +3681,10 @@ const App = {
     if(staticMap[key]) return staticMap[key];
     const kakaoMatch = /^frp_kakao_quota_(\d+)$/.exec(key);
     if(kakaoMatch) return {label: `카카오 사용량 카운터 (키 ${Number(kakaoMatch[1])+1})`};
+    // firebase:* 는 우리 코드가 아니라 실시간 사용량 동기화용 Firebase SDK가 접속할 때
+    // 자동으로 만들어두는 항목(예: firebase:host:...). 지워도 데이터 손실 없이 다음 접속 때
+    // 다시 만들어짐.
+    if(key.startsWith('firebase:')) return {label:'실시간 동기화 접속 정보 (자동 생성)'};
     return null;
   },
   escHtml(s){
