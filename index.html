@@ -1167,55 +1167,33 @@ function bumpTmapRouteQuota(){
   return q;
 }
 
+// [지도 터치 이동/확대축소 안 되는 문제 수정] 예전엔 카카오맵 SDK가 내부적으로 쓰는
+// document.write를 가로채서 <script> 태그를 직접 끼워넣는 방식으로 불러왔음. 이 방식은
+// "동적으로 삽입한 스크립트에서 document.write를 부르면 페이지 전체가 지워지는" 문제는
+// 막아주지만, 카카오 SDK가 원래 기대하는 "이전 모듈이 완전히 실행된 다음에 다음 모듈 실행"
+// 순서를 그대로 보장해주지 못함(외부 스크립트는 비동기로 불러오는데, 그 사이에 끼어있는
+// 인라인 스크립트는 곧바로 실행돼버림). 데스크톱은 마우스 이벤트만 있어도 지도 이동/확대가
+// 되니 눈에 잘 안 띄지만, 터치 제스처(한 손가락 이동, 두 손가락 확대축소) 처리 모듈이 이
+// 순서 꼬임 때문에 지도가 다 그려진 뒤에도 늦게(또는 제대로) 붙지 못하면 "지도는 보이는데
+// 모바일에서 터치로 안 움직이는" 증상으로 나타날 수 있음.
+// → 카카오가 공식적으로 안내하는 "동적 로드" 방식(appkey 뒤에 autoload=false를 붙이고,
+// 스크립트 로드가 끝난 뒤 kakao.maps.load(콜백)으로 완전히 준비된 시점을 직접 받는 방식)
+// 으로 바꿔서 document.write를 아예 건드리지 않도록 함. 이렇게 하면 콜백이 실행되는 시점엔
+// 터치 제스처 모듈을 포함한 모든 내부 모듈이 확실히 준비돼 있음.
 function loadKakaoSdkScript(appKey){
   return new Promise((resolve, reject)=>{
     document.querySelectorAll('script[data-kakao-sdk]').forEach(s=>s.remove());
     try{ delete window.kakao; }catch(e){ window.kakao = undefined; }
 
-    const subScriptLoadPromises = [];
-    const originalWrite = document.write;
-    const originalWriteln = document.writeln;
-    function interceptedWrite(html){
-      const tmp = document.createElement('div');
-      tmp.innerHTML = html;
-      Array.from(tmp.childNodes).forEach(node=>{
-        if(node.nodeType !== 1) return;
-        if(node.tagName === 'SCRIPT'){
-          const s = document.createElement('script');
-          Array.from(node.attributes).forEach(a=> s.setAttribute(a.name, a.value));
-          s.dataset.kakaoSdk = '1';
-          if(node.src){
-            subScriptLoadPromises.push(new Promise(res=>{ s.onload = res; s.onerror = res; }));
-          } else {
-            s.textContent = node.textContent;
-          }
-          document.head.appendChild(s);
-        } else {
-          document.head.appendChild(node);
-        }
-      });
-    }
-    document.write = interceptedWrite;
-    document.writeln = interceptedWrite;
-    function restoreWrite(){
-      document.write = originalWrite;
-      document.writeln = originalWriteln;
-    }
-
     const script = document.createElement('script');
     script.dataset.kakaoSdk = '1';
-    script.async = false;
-    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&libraries=services`;
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${encodeURIComponent(appKey)}&autoload=false&libraries=services`;
     script.onload = ()=>{
-      Promise.all(subScriptLoadPromises).then(()=>{
-        restoreWrite();
-        resolve();
-      });
+      try{
+        kakao.maps.load(()=> resolve());
+      }catch(e){ reject(e); }
     };
-    script.onerror = ()=>{
-      restoreWrite();
-      reject(new Error('kakao-sdk-load-error'));
-    };
+    script.onerror = ()=> reject(new Error('kakao-sdk-load-error'));
     document.head.appendChild(script);
   });
 }
