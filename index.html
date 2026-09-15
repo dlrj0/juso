@@ -353,19 +353,16 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .modal-card input[type=text]{width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;background:#fff;}
   .modal-card .row-btns{display:flex;gap:8px;margin:8px 0 4px;}
   .modal-card .row-btns button{flex:1;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:10px;font-size:12.5px;font-weight:600;color:var(--text);}
-  .text-mute-inline{font-weight:400;color:var(--text-mute);font-size:11.5px;}
-  .storage-group{border:1px solid var(--border);border-radius:12px;padding:10px 12px;margin:8px 0 10px;}
-  .storage-group-head{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;font-weight:600;margin-bottom:6px;}
-  .storage-total{font-size:11.5px;font-weight:400;color:var(--text-mute);font-family:var(--mono);}
-  .storage-empty{font-size:12px;color:var(--text-mute);margin:4px 0 6px;}
-  .storage-item{border-top:1px solid var(--border);padding:8px 0;}
+  .storage-group{border:1px solid var(--border);border-radius:12px;padding:8px 10px;margin:6px 0 8px;}
+  .storage-group-head{display:flex;justify-content:space-between;align-items:baseline;font-size:12.5px;font-weight:600;margin-bottom:2px;}
+  .storage-total{font-size:11px;font-weight:400;color:var(--text-mute);font-family:var(--mono);}
+  .storage-empty{font-size:12px;color:var(--text-mute);margin:4px 0 2px;}
+  .storage-item{display:flex;align-items:center;gap:8px;padding:5px 0;border-top:1px solid var(--surface-2);}
   .storage-item:first-child{border-top:none;}
-  .storage-item-head{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
-  .storage-item-label{font-size:12.5px;font-weight:600;}
-  .storage-item-size{font-size:11px;color:var(--text-mute);font-family:var(--mono);white-space:nowrap;}
-  .storage-item-desc{font-size:11.5px;color:var(--text-mute);line-height:1.5;margin:2px 0 6px;}
-  .storage-del-btn{background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:4px 10px;font-size:11.5px;font-weight:600;}
-  .storage-clear-all-btn{width:100%;margin-top:4px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:9px;font-size:12.5px;font-weight:600;}
+  .storage-item-label{flex:1;min-width:0;font-size:12.5px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .storage-item-size{font-size:11px;color:var(--text-mute);font-family:var(--mono);white-space:nowrap;flex-shrink:0;}
+  .storage-del-btn{flex-shrink:0;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:3px 9px;font-size:11px;font-weight:600;}
+  .storage-clear-all-btn{width:100%;margin-top:4px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:7px;font-size:12px;font-weight:600;}
 
   .nav-addr-row{display:flex;align-items:center;gap:8px;background:var(--surface-2);
     border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:0 0 14px;}
@@ -629,52 +626,48 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div id="settingsModal" class="modal hidden">
   <div class="modal-card">
     <h3>설정</h3>
-    <p class="hint">여기 입력한 내용은 이 브라우저에만 저장돼요.</p>
+    <p class="hint">이 브라우저에만 저장돼요.</p>
 
-    <label class="fieldlabel">카카오 API 사용량</label>
+    <label class="fieldlabel">카카오 지오코딩 사용량</label>
     <div id="kakaoQuotaBox" class="hint" style="font-family:var(--mono);"></div>
 
-    <label class="fieldlabel" style="margin-top:14px;">길찾기 API 키 <span style="font-weight:400;color:var(--text-mute);">— 선택</span></label>
-    <p class="hint">지도의 "길찾기(도로)" 기능용 키예요. 안 넣어도 기본 키로 바로 동작하고, 사용량이 많으면 여기에 직접 발급받은 키를 넣어 쓸 수 있어요.</p>
-    <input type="text" id="kakaoRestKeyInput" placeholder="비워두면 내장 공용 키 사용 (예: e8wHh2ty...)" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--mono);">
+    <label class="fieldlabel" style="margin-top:14px;">길찾기(TMAP) 키 <span style="font-weight:400;color:var(--text-mute);">— 선택</span></label>
+    <p class="hint">비워두면 기본 키로 바로 동작해요. 사용량이 부족할 때만 직접 키를 넣으세요.</p>
+    <input type="text" id="navApiKeyInput" placeholder="비워두면 기본 키 사용" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--mono);">
     <div class="row-btns" style="margin-top:6px;">
-      <button onclick="App.saveKakaoRestKeyFromInput()">저장</button>
-      <button onclick="App.clearKakaoRestKey()">내장 키로 되돌리기</button>
+      <button onclick="App.saveNavApiKeyFromInput()">저장</button>
+      <button onclick="App.clearNavApiKey()">기본 키로 되돌리기</button>
     </div>
-    <div id="kakaoNavQuotaBox" class="hint" style="font-family:var(--mono);"></div>
+    <div id="navQuotaBox" class="hint" style="font-family:var(--mono);"></div>
 
-    <label class="fieldlabel">마을 좌표 참조표 <span style="font-weight:400;color:var(--text-mute);">(마을 단위 · 계속 저장됨)</span></label>
-    <p class="hint">한 번 찾은 "마을" 좌표는 자동 저장돼서 다음엔 다시 안 찾아도 돼요. 동료에게 파일로 넘겨주면 동료도 바로 쓸 수 있어요.<br>⚠️ <b>"마을 단위 위치 확인"</b>을 눌렀을 때만 여기 채워져요. <b>"필지 단위 위치 확인"</b>으로 좌표를 찾은 경우엔 여기가 아니라 바로 아래 "필지 좌표 캐시"에 (이번 세션 동안만) 들어가요 — 그래서 필지로 조회했는데 여기 문구가 "저장된 마을 좌표가 없어요"로 나와도 정상이에요.</p>
+    <label class="fieldlabel" style="margin-top:14px;">마을 좌표 참조표</label>
+    <p class="hint">찾은 마을 좌표를 저장해서 다음엔 다시 안 찾아요. 동료와 파일로 주고받을 수 있어요.</p>
     <div class="row-btns">
-      <button onclick="App.importCoordRef()">참조표 불러오기</button>
-      <button onclick="App.exportCoordRef()">참조표 내보내기</button>
+      <button onclick="App.importCoordRef()">불러오기</button>
+      <button onclick="App.exportCoordRef()">내보내기</button>
     </div>
     <input type="file" id="coordRefFile" accept=".json" style="display:none" onchange="App.handleCoordRefFile(event)">
     <div id="coordRefCount" class="hint"></div>
 
-    <label class="fieldlabel" style="margin-top:14px;">필지 좌표 캐시 <span style="font-weight:400;color:var(--text-mute);">(필지 단위 · 이번 세션만)</span></label>
-    <p class="hint">"필지 단위 위치 확인"으로 찾은 개별 필지 좌표예요. 같은 작업 세션 안에서 같은 주소가 또 나오면 재조회 없이 이 캐시를 재사용해요(엑셀 40건 중 일부만 API를 쓰는 이유가 보통 이거예요). 로컬 저장소가 아니라 세션 저장소(아래 "현재 작업 중인 내용" 안)에 들어있어서, 탭을 닫거나 "새로 시작"하면 함께 사라져요.</p>
-    <div id="parcelCoordCacheInfo" class="hint"></div>
-
-    <label class="fieldlabel" style="margin-top:18px;">저장소 관리</label>
-    <p class="hint">이 사이트가 이 브라우저에 저장해둔 데이터예요. 세션 저장소는 탭을 닫으면 자동으로 지워지고, 로컬 저장소는 직접 지우기 전까지 계속 남아있어요.</p>
+    <label class="fieldlabel" style="margin-top:16px;">저장된 데이터</label>
+    <p class="hint">세션 저장소는 탭을 닫으면 지워지고, 로컬 저장소는 직접 지우기 전까지 남아있어요.</p>
 
     <div class="storage-group">
       <div class="storage-group-head">
-        <span>🗂️ 로컬 저장소 <span class="text-mute-inline">(탭을 닫아도 남음)</span></span>
+        <span>🗂️ 로컬 저장소</span>
         <span id="localStorageTotal" class="storage-total"></span>
       </div>
       <div id="localStorageList"></div>
-      <button class="storage-clear-all-btn" onclick="App.clearAllLocalStorage()">로컬 저장소 전체 비우기</button>
+      <button class="storage-clear-all-btn" onclick="App.clearAllLocalStorage()">모두 비우기</button>
     </div>
 
     <div class="storage-group">
       <div class="storage-group-head">
-        <span>⏳ 세션 저장소 <span class="text-mute-inline">(탭을 닫으면 자동 삭제)</span></span>
+        <span>⏳ 세션 저장소</span>
         <span id="sessionStorageTotal" class="storage-total"></span>
       </div>
       <div id="sessionStorageList"></div>
-      <button class="storage-clear-all-btn" onclick="App.clearAllSessionStorage()">세션 저장소 전체 비우기(작업 새로 시작)</button>
+      <button class="storage-clear-all-btn" onclick="App.clearAllSessionStorage()">모두 비우기 (새로 시작)</button>
     </div>
 
     <button class="ghost-btn" onclick="App.closeSettings()">닫기</button>
@@ -3646,61 +3639,48 @@ const App = {
   openSettings(){
     const n = Object.keys(this.villageCoordRef||{}).length;
     document.getElementById('coordRefCount').textContent = n>0 ? `현재 저장된 마을 좌표: ${n}개` : '아직 저장된 마을 좌표가 없어요.';
-    const restInput = document.getElementById('kakaoRestKeyInput');
+    const restInput = document.getElementById('navApiKeyInput');
     if(restInput) restInput.value = loadTmapUserKey();
     this.renderKakaoQuota();
     this.renderStorageManager();
     document.getElementById('settingsModal').classList.remove('hidden');
   },
   closeSettings(){ document.getElementById('settingsModal').classList.add('hidden'); },
-  saveKakaoRestKeyFromInput(){
-    const input = document.getElementById('kakaoRestKeyInput');
+  saveNavApiKeyFromInput(){
+    const input = document.getElementById('navApiKeyInput');
     saveTmapAppKey(input ? input.value : '');
     this.renderKakaoQuota();
     this.renderStorageManager();
     alert('저장했어요.');
   },
-  clearKakaoRestKey(){
+  clearNavApiKey(){
     saveTmapAppKey('');
-    const input = document.getElementById('kakaoRestKeyInput');
+    const input = document.getElementById('navApiKeyInput');
     if(input) input.value = '';
     this.renderKakaoQuota();
     this.renderStorageManager();
   },
 
   // ---------- 저장소 관리(로컬/세션 스토리지 조회 및 삭제) ----------
-  // 이 사이트가 브라우저에 실제로 저장한 키를 "알려진 키 설명표"와 대조해 사람이 읽을 수
-  // 있는 이름/설명을 붙여 보여줌. 설명표에 없는 키(예: 이후 버전에서 추가됐거나 남아있는
-  // 더미 데이터)도 원래 키 이름 그대로 표시해서 눈에 안 보이는 데이터가 없게 함.
-  //
-  // [저장소 정리 내역] 예전엔 카카오/티맵 API 사용량 카운터, 내보내기 항목 기억까지
-  // localStorage에 남았는데, 계속 남아있을 이유가 약한 것들이라 정리함:
-  //  - API 사용량 카운터(카카오/티맵) → sessionStorage로 이동. 실사용량의 진짜 기준은
-  //    파이어베이스 공유 카운터라 이 값은 동기화 실패 시에만 쓰이는 탭 한정 보조 표시.
-  //  - 내보내기 항목 기억(frp_export_cols) → 아예 저장 안 함(중요도가 낮아 기억할 필요 없음).
-  //  - 마을 좌표 참조표 / 개인 티맵 키만 계속 localStorage에 남김(둘 다 계속 남아있어야
-  //    값어치가 있는 데이터라서 — 각각 API 재조회 방지, 재입력 방지 목적).
+  // 이 사이트가 브라우저에 실제로 저장한 키를 "알려진 키 이름표"와 대조해 사람이 읽을 수
+  // 있는 이름을 붙여 보여줌. 이름표에 없는 키(예: 이후 버전에서 추가됐거나 남아있는 더미
+  // 데이터)도 원래 키 이름 그대로 표시해서 눈에 안 보이는 데이터가 없게 함.
   STORAGE_KEY_INFO: {
-    'frp_village_coord_ref': {label:'마을 좌표 참조표', desc:'"위치 확인"으로 한 번 찾은 마을 좌표를 저장해서 다음에 같은 마을이 나오면 다시 조회하지 않게 해줘요. 지우면 다음번엔 해당 마을 좌표를 새로 조회해요(정상 동작이지만 API 조회량을 더 씀).'},
-    'frp_tmap_app_key': {label:'개인 티맵 API 키', desc:'설정에서 직접 입력한 길찾기(티맵) 키예요. 지우면 내장 공용 키로 되돌아가요.'},
+    'frp_village_coord_ref': {label:'마을 좌표 참조표'},
+    'frp_tmap_app_key': {label:'개인 길찾기(TMAP) 키'},
   },
   SESSION_KEY_INFO: {
-    'frp_session_v1': {label:'현재 작업 중인 내용', desc:'업로드한 엑셀, 마을·필지 순서, 확인된 필지 좌표, 진행 상태 등 지금 화면에 보이는 작업 내용이 통째로 들어있어요(필지별 좌표 캐시도 이 안에 포함돼요). 지우면 새로고침해도 이어서 작업할 수 없고, 처음 화면으로 돌아가요.'},
-    'frp_tmap_route_quota': {label:'티맵 길찾기 사용량 카운터', desc:'오늘 이 탭에서 길찾기 API를 몇 번 썼는지 세는 숫자예요. 지워도 실제 API 사용량 자체엔 영향 없고, 화면에 보이는 "오늘 남은 건수" 표시만 초기화돼요.'},
+    'frp_session_v1': {label:'현재 작업 중인 내용'},
+    'frp_tmap_route_quota': {label:'길찾기 사용량 카운터'},
   },
-  // 설명표에 없는 키 중에서도 "패턴이 뻔한" 키는 원문 그대로 보여주는 대신 사람이 읽을
-  // 이름을 붙여줌(예: 카카오 앱 키가 여러 개 등록돼 있으면 frp_kakao_quota_0, _1... 처럼
+  // 이름표에 없는 키 중에서도 "패턴이 뻔한" 키는 원문 그대로 보여주는 대신 사람이 읽을
+  // 이름을 붙여줌(카카오 앱 키가 여러 개 등록돼 있으면 frp_kakao_quota_0, _1... 처럼
   // 키 개수가 늘어날 수 있어서 고정된 표로 다 나열하기보다 규칙으로 처리).
   resolveStorageInfo(key, isSession){
     const staticMap = isSession ? this.SESSION_KEY_INFO : this.STORAGE_KEY_INFO;
     if(staticMap[key]) return staticMap[key];
     const kakaoMatch = /^frp_kakao_quota_(\d+)$/.exec(key);
-    if(kakaoMatch){
-      return {
-        label: `카카오 API 사용량 카운터 (키 ${Number(kakaoMatch[1])+1})`,
-        desc: '오늘 이 탭에서 카카오 지오코딩 API를 몇 번 썼는지 세는 숫자예요. 실사용량의 진짜 기준은 파이어베이스 공유 카운터가 따로 정확히 들고 있고, 이 값은 동기화 실패 시에만 대신 쓰이는 보조 표시용이에요. 지워도 실사용량엔 영향 없어요.'
-      };
-    }
+    if(kakaoMatch) return {label: `카카오 사용량 카운터 (키 ${Number(kakaoMatch[1])+1})`};
     return null;
   },
   escHtml(s){
@@ -3735,15 +3715,15 @@ const App = {
       if(entries.length===0) return `<p class="storage-empty">저장된 데이터가 없어요.</p>`;
       return entries.map(e=>{
         const info = this.resolveStorageInfo(e.key, isSession);
-        const label = info ? info.label : e.key;
-        const desc = info ? info.desc : `이 사이트가 저장한 것으로 보이지만 설명이 등록되지 않은 항목이에요 (키: ${this.escHtml(e.key)}).`;
+        let label = info ? info.label : e.key;
+        if(isSession && e.key===SESSION_STORAGE_KEY){
+          const n = Object.keys(this.parcelCoordCache||{}).length;
+          if(n>0) label += ` · 필지좌표 ${n}개`;
+        }
         return `
           <div class="storage-item">
-            <div class="storage-item-head">
-              <span class="storage-item-label">${this.escHtml(label)}</span>
-              <span class="storage-item-size">${this.formatStorageBytes(e.size)}</span>
-            </div>
-            <p class="storage-item-desc">${this.escHtml(desc)}</p>
+            <span class="storage-item-label">${this.escHtml(label)}</span>
+            <span class="storage-item-size">${this.formatStorageBytes(e.size)}</span>
             <button class="storage-del-btn" onclick="App.clearStorageKey('${e.key.replace(/'/g,"\\'")}', ${isSession})">삭제</button>
           </div>`;
       }).join('');
@@ -3761,8 +3741,6 @@ const App = {
       ? `${localEntries.length}개 · ${this.formatStorageBytes(localEntries.reduce((s,e)=>s+e.size,0))}` : '';
     if(sessionTotalEl) sessionTotalEl.textContent = sessionEntries.length
       ? `${sessionEntries.length}개 · ${this.formatStorageBytes(sessionEntries.reduce((s,e)=>s+e.size,0))}` : '';
-
-    this.renderParcelCoordCacheInfo();
   },
   // 로컬/세션 저장소 키 하나를 지운 뒤 화면에 반영된 메모리 상태도 같이 맞춰줌(안 그러면
   // 예를 들어 마을 좌표 참조표를 지워도 이미 메모리에 올라온 값이 남아있다가 잠시 뒤
@@ -3784,7 +3762,7 @@ const App = {
     if(key === 'frp_village_coord_ref'){
       this.villageCoordRef = {};
     } else if(key === 'frp_tmap_app_key'){
-      const input = document.getElementById('kakaoRestKeyInput');
+      const input = document.getElementById('navApiKeyInput');
       if(input) input.value = '';
       this.renderKakaoQuota();
     } else if(key === 'frp_tmap_route_quota' || /^frp_kakao_quota_\d+$/.test(key)){
@@ -3797,7 +3775,7 @@ const App = {
     if(!confirm(`이 브라우저에 저장된 로컬 데이터 ${entries.length}개를 모두 지울까요?\n(마을 좌표 참조표, 개인 키 등 — 지금 화면에서 작업 중인 내용에는 영향 없어요)`)) return;
     entries.forEach(e=>{ try{ localStorage.removeItem(e.key); }catch(err){ /* non-fatal */ } });
     this.villageCoordRef = {};
-    const input = document.getElementById('kakaoRestKeyInput');
+    const input = document.getElementById('navApiKeyInput');
     if(input) input.value = '';
     this.renderKakaoQuota();
     this.renderStorageManager();
@@ -3820,20 +3798,6 @@ const App = {
     const hasWork = (this.parcels && this.parcels.length>0) || (this.villageOrder && this.villageOrder.length>0);
     if(!hasWork){ location.reload(); return; }
     this.discardSessionAndRestart();
-  },
-
-  // 필지 단위 좌표 캐시(parcelCoordCache)는 localStorage가 아니라 세션 데이터(frp_session_v1)
-  // 안에 통째로 들어있어서, 위의 "세션 저장소" 목록에는 "현재 작업 중인 내용" 한 덩어리로만
-  // 보임. 그 안에 필지 좌표가 몇 개나 들어있는지는 별도로 뽑아서 보여줌 — 마을 좌표 참조표와
-  // 헷갈리기 쉬운 부분이라(마을 참조표는 "마을 단위 위치 확인"을 눌렀을 때만 채워지고, 필지
-  // 좌표는 "필지 단위 위치 확인"을 눌렀을 때 채워짐 — 서로 다른 기능/버튼임).
-  renderParcelCoordCacheInfo(){
-    const box = document.getElementById('parcelCoordCacheInfo');
-    if(!box) return;
-    const n = Object.keys(this.parcelCoordCache||{}).length;
-    box.textContent = n>0
-      ? `이번 작업 세션에 캐시된 필지 좌표: ${n}개 (탭을 닫거나 "새로 시작"하면 사라져요)`
-      : '이번 세션에 캐시된 필지 좌표가 아직 없어요. (필지 단위 "위치 확인"을 실행하면 여기 쌓여요)';
   },
 
   rememberVillageCoord(v){
@@ -3965,7 +3929,7 @@ const App = {
     }
 
     // 길찾기(TMAP) 쿼터 — 단일 버킷. 키가 아예 없으면(내장 기본값도 미설정) 안내 문구만 표시.
-    const navBox = document.getElementById('kakaoNavQuotaBox');
+    const navBox = document.getElementById('navQuotaBox');
     if(navBox){
       const usesSharedBucket = isFirebaseConfigured() && !isUsingTmapUserKey();
       const tmapStillLoading = usesSharedBucket && !_tmapSharedResolved && !_tmapSharedFailed;
