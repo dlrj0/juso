@@ -317,7 +317,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   }
   .fab-stack.with-sticky{ bottom:96px; }
   /* 지도 캡처(스크린샷) 진행 중엔 버튼이 사진에 찍히지 않도록 잠깐 완전히 숨김 */
-  .fab-stack.capture-hiding{ display:none !important; }
+  .fab-stack.capture-hiding, .sticky-bottom.capture-hiding{ display:none !important; }
   .fab-btn{
     width:48px;height:48px;border-radius:50%;background:var(--surface);border:1px solid var(--border);
     box-shadow:0 2px 10px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;
@@ -3089,12 +3089,17 @@ const App = {
   // 넉넉한 시간)가 지난 뒤에도 여전히 숨김 상태일 때만 리스너를 건다. 정상적인
   // 캡처는 1초 안에 다 끝나므로 이 지연 덕분에 정상 흐름에는 전혀 개입하지 않고,
   // 정말로 뭔가 잘못돼서 버튼이 안 돌아오는 극단적 상황에서만 작동함.
-  _armCaptureHideSafetyNet(fabStack, guardMs=3000){
-    if(!fabStack) return ()=>{};
+  // els는 배열(예: [fabStack, stickyBottom])을 받아 여러 요소를 한꺼번에 다룸 —
+  // guardMs가 지나도 그중 하나라도 여전히 숨겨져 있으면, 이후 첫 조작에서 넘겨받은
+  // 요소 전부를 함께 복구시킴.
+  _armCaptureHideSafetyNet(els, guardMs=3000){
+    const list = (Array.isArray(els) ? els : [els]).filter(Boolean);
+    if(!list.length) return ()=>{};
     let detach = ()=>{};
     const guardTimer = setTimeout(()=>{
-      if(!fabStack.classList.contains('capture-hiding')) return; // 이미 정상 복구됨
-      const restore = ()=>{ fabStack.classList.remove('capture-hiding'); };
+      const stillHidden = list.some(el=>el.classList.contains('capture-hiding'));
+      if(!stillHidden) return; // 이미 정상 복구됨
+      const restore = ()=>{ list.forEach(el=>el.classList.remove('capture-hiding')); };
       const opts = { passive:true };
       const events = ['mousemove','pointerdown','touchstart','keydown'];
       events.forEach(ev=>document.addEventListener(ev, restore, opts));
@@ -3133,6 +3138,13 @@ const App = {
 
     const btn = document.getElementById('fabScreenshotBtn');
     const fabStack = document.getElementById('fabStack');
+    // [버그 수정] 캡처 시 화면에 찍히면 안 되는 고정 UI가 fab-stack(우측 하단 둥근
+    // 버튼들) 말고 하나 더 있었음: 하단 고정 바(stickyBottom, "N/N 완료"+엑셀로
+    // 내보내기 등)는 지도 화면에서 함께 떠 있는데도 캡처 숨김 대상에서 빠져 있어서,
+    // fab-stack 타이밍을 아무리 손봐도 이쪽은 항상 그대로 찍히고 있었음. 이제 두
+    // 요소를 하나의 배열로 묶어 항상 "동시에" 숨기고 "동시에" 복구함.
+    const stickyBottom = document.getElementById('stickyBottom');
+    const captureHideEls = [fabStack, stickyBottom].filter(Boolean);
     if(btn){ btn.disabled = true; btn.style.opacity = '0.5'; }
 
     // [버그 수정] _kakaoCaptureInProgress로 "확대/축소 흔들기" 트릭은 막아뒀지만, 그와
@@ -3176,17 +3188,19 @@ const App = {
       // 트랙이 잡힌 직후 한두 프레임은 비어있을 수 있어 살짝 대기
       await delay(120);
 
-      // 우측 하단 버튼들(캡처 버튼 포함)이 사진에 찍히지 않도록 잠깐 완전히 숨김.
+      // 우측 하단 버튼들(캡처 버튼 포함)과 하단 고정 바(엑셀로 내보내기 등)가
+      // 사진에 찍히지 않도록 잠깐 완전히 숨김.
       // [버그 수정] 예전엔 여기서 고정 200ms만 기다리고 바로 찍었는데, 그 시간 안에
       // "버튼이 사라진 화면"이 캡처 스트림에 아직 반영 안 된 경우가 있어 가끔 버튼이
       // 덜 사라진 채로 찍혔음. 지금은 _waitUntilCaptureHiddenReflected()로 실제
       // 캡처 스트림 프레임이 몇 번 갱신될 때까지 확인한 뒤에만 찍음.
+      // [버그 수정] 예전엔 우측 하단 버튼(fab-stack)만 숨겼는데, 하단 고정 바
+      // (stickyBottom)는 숨김 대상에서 빠져 있어 항상 그대로 찍혔음. 이제 두 요소를
+      // captureHideEls 배열로 묶어 항상 함께 숨기고 함께 복구함.
       // 혹시라도 아이콘이 안 사라진 채로 남는 극단적 상황을 대비해, 사용자가 화면을
       // 만지거나 마우스를 움직이면 즉시 복구되는 안전장치도 같이 걸어둠.
-      if(fabStack){
-        fabStack.classList.add('capture-hiding');
-        uninstallSafetyNet = this._armCaptureHideSafetyNet(fabStack);
-      }
+      captureHideEls.forEach(el=>el.classList.add('capture-hiding'));
+      uninstallSafetyNet = this._armCaptureHideSafetyNet(captureHideEls);
       await this._waitUntilCaptureHiddenReflected(video);
 
       const rect = container.getBoundingClientRect();
@@ -3209,7 +3223,7 @@ const App = {
       // [버그 수정] "캡처 완료"를 인식한 바로 이 시점에 복구함. drawImage는 동기
       // 호출이라 이 줄에 도달했다는 것 자체가 캔버스에 이미 다 그려졌다는 뜻이므로,
       // 지금 아이콘을 되돌려도 방금 찍은 사진(캔버스)에는 전혀 영향이 없음.
-      if(fabStack) fabStack.classList.remove('capture-hiding'); // 프레임 다 떴으니 바로 되돌림
+      captureHideEls.forEach(el=>el.classList.remove('capture-hiding')); // 프레임 다 떴으니 바로 되돌림
       uninstallSafetyNet();
       stream.getTracks().forEach(t=>t.stop()); // 캡처 끝났으니 바로 공유 표시 해제
       stream = null;
@@ -3235,7 +3249,7 @@ const App = {
         alert('지도 캡처에 실패했어요: ' + (err && err.message ? err.message : err));
       }
     }finally{
-      if(fabStack) fabStack.classList.remove('capture-hiding');
+      captureHideEls.forEach(el=>el.classList.remove('capture-hiding'));
       uninstallSafetyNet();
       if(stream) stream.getTracks().forEach(t=>t.stop());
       if(video){ video.srcObject = null; video.remove(); }
