@@ -46,6 +46,21 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .topbar .brand b{font-size:15px;letter-spacing:0.02em;}
   .topbar .brand span{font-size:11px;color:#C9D6C9;font-family:var(--mono);}
   .topbar .step{font-size:11px;background:rgba(255,255,255,0.12);padding:4px 9px;border-radius:100px;font-family:var(--mono);}
+  /* 계산/지도 화면에서만 보이는 2번째 줄(주소검색으로 필지 추가). topbar 자체는 그대로 두고
+     그 아래에 별도의 sticky 요소로 붙여서, 기존 topbar의 레이아웃/CSS는 전혀 건드리지 않음.
+     top 값과 next-card가 참조하는 --topbar-h는 App._updateTopbarSearchLayout()이 실측해서
+     JS로 갱신함(기본값은 기존 --topbar-h와 동일한 54px). */
+  .topbar-search{
+    position:sticky;top:54px;z-index:19;background:var(--accent-dark);padding:0 16px 12px;
+  }
+  .topbar-search .searchbar{margin:0;position:relative;}
+  .topbar-search .searchbar input{background:#fff;}
+  .topbar-search .searchbar button{
+    border:1px solid rgba(255,255,255,0.4);border-radius:10px;padding:0 14px;font-size:13px;font-weight:600;
+    background:rgba(255,255,255,0.14);color:#fff;
+  }
+  /* 지도 집중모드일 때는 다른 지도 부가 컨트롤들처럼 검색행도 숨겨서 화면을 최대한 비움 */
+  body.map-focus-mode .topbar-search{display:none !important;}
 
   .container{max-width:640px;margin:0 auto;padding:18px 16px 40px;}
 
@@ -146,27 +161,37 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .gps-status{font-size:11.5px;color:var(--text-mute);text-align:center;margin:-8px 0 14px;font-family:var(--mono);white-space:pre-line;}
 
   .village-group{background:var(--surface);border:1px solid var(--border);border-radius:14px;margin-bottom:10px;overflow:hidden;}
-  .vg-head{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;}
-  .vg-head .order-badge{
+  /* vg-head는 스와이프 배경(swipe-bg)을 뒤에 깔기 위한 위치기준/클리핑 래퍼일 뿐이고,
+     실제 기존 레이아웃(플렉스 정렬 등)은 그 안의 vg-head-inner가 그대로 담당함.
+     → 기존에 .vg-head 에 걸려있던 셀렉터들을 .vg-head-inner 기준으로 그대로 옮겨서
+     보이는 모양/동작은 이전과 완전히 동일하게 유지함. */
+  .vg-head{position:relative;overflow:hidden;}
+  .vg-head-inner{display:flex;align-items:center;gap:10px;padding:13px 14px;cursor:pointer;flex-wrap:wrap;position:relative;z-index:1;background:var(--surface);}
+  .vg-head-inner .order-badge{
     width:26px;height:26px;border-radius:8px;background:var(--surface-2);color:var(--text);
     display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12.5px;font-weight:700;flex-shrink:0;
   }
-  .vg-head .info{flex:1;min-width:0;}
-  .vg-head .info .name{font-size:14.5px;font-weight:700;}
-  .vg-head .info .prog{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);}
-  .vg-head{flex-wrap:wrap;}
-  .vg-head .movebtns{display:flex;gap:4px;}
-  .vg-head .movebtns button, .vg-head .locbtn, .vg-head .chevron{
+  .vg-head-inner .info{flex:1;min-width:0;}
+  .vg-head-inner .info .name{font-size:14.5px;font-weight:700;}
+  .vg-head-inner .info .prog{font-size:11.5px;color:var(--text-mute);font-family:var(--mono);}
+  .vg-head-inner .movebtns{display:flex;gap:4px;}
+  .vg-head-inner .movebtns button, .vg-head-inner .locbtn, .vg-head-inner .chevron{
     width:30px;height:30px;border-radius:8px;border:1px solid var(--border);background:#fff;font-size:13px;color:var(--text-mute);
     flex-shrink:0;display:flex;align-items:center;justify-content:center;
   }
-  .vg-head .locbtn.set{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft);}
-  .vg-head .chevron{
+  .vg-head-inner .locbtn.set{border-color:var(--accent);color:var(--accent-dark);background:var(--accent-soft);}
+  .vg-head-inner .chevron{
     border:1.5px solid var(--accent);background:var(--accent-soft);color:var(--accent-dark);
   }
-  .vg-head .chevron svg{width:16px;height:16px;transition:transform .15s ease;}
-  .vg-head .chevron.collapsed svg{transform:rotate(0deg);}
-  .vg-head .chevron:not(.collapsed) svg{transform:rotate(180deg);}
+  .vg-head-inner .chevron svg{width:16px;height:16px;transition:transform .15s ease;}
+  .vg-head-inner .chevron.collapsed svg{transform:rotate(0deg);}
+  .vg-head-inner .chevron:not(.collapsed) svg{transform:rotate(180deg);}
+  .vg-head-inner .movebtns button.delbtn, .parcel-row .pmove button.delbtn{color:var(--warn);border-color:var(--warn);}
+  .village-group.v-deleted .vg-head-inner .movebtns button.delbtn, .parcel-row.p-deleted .pmove button.delbtn{
+    color:var(--accent-dark);border-color:var(--accent);background:var(--accent-soft);
+  }
+  .village-group.v-deleted .vg-head-inner{background:var(--warn-soft);}
+  .village-group.v-deleted .vg-head-inner .info .name{text-decoration:line-through;opacity:.8;}
 
   /* ---- map screen: 지도유형 전환 / 집중모드 ---- */
   .pin-scale-control{
@@ -211,19 +236,34 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   #screen-map.map-focus #kakaoMapContainer{height:90vh;min-height:420px;}
 
   .parcel-list{border-top:1px solid var(--surface-2);}
-  .parcel-row{display:flex;align-items:center;gap:10px;padding:11px 14px;border-bottom:1px solid var(--surface-2);}
+  /* parcel-row도 vg-head와 같은 이유로 위치기준/클리핑 래퍼가 되고, 실제 기존
+     레이아웃은 안쪽 row-content가 그대로 담당함(셀렉터도 동일하게 이동). */
+  .parcel-row{position:relative;overflow:hidden;border-bottom:1px solid var(--surface-2);}
   .parcel-row:last-child{border-bottom:none;}
-  .parcel-row.done{opacity:0.5;}
-  .parcel-row .pnum{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);width:18px;flex-shrink:0;}
-  .parcel-row .pinfo{flex:1;min-width:0;}
-  .parcel-row .pinfo .addr{font-size:13.5px;line-height:1.4;}
-  .parcel-row .pinfo .jibun{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);}
-  .parcel-row .pinfo .extra{font-size:11px;color:var(--text-mute);margin-top:2px;}
-  .parcel-row .pmove{display:flex;gap:3px;flex-shrink:0;}
-  .parcel-row .pmove button{
+  .row-content{display:flex;align-items:center;gap:10px;padding:11px 14px;position:relative;z-index:1;background:var(--surface);}
+  .parcel-row.done .row-content{opacity:0.5;}
+  .row-content .pnum{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);width:18px;flex-shrink:0;}
+  .row-content .pinfo{flex:1;min-width:0;}
+  .row-content .pinfo .addr{font-size:13.5px;line-height:1.4;}
+  .row-content .pinfo .jibun{font-family:var(--mono);font-size:11.5px;color:var(--text-mute);}
+  .row-content .pinfo .extra{font-size:11px;color:var(--text-mute);margin-top:2px;}
+  .row-content .pmove{display:flex;gap:3px;flex-shrink:0;}
+  .row-content .pmove button{
     width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:#fff;font-size:12px;color:var(--text-mute);
   }
-  .parcel-row .pcheck{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0;}
+  .row-content .pcheck{width:24px;height:24px;accent-color:var(--accent);flex-shrink:0;}
+
+  /* ---- 삭제됨 상태(완료=opacity 흐림과는 다르게, 경고색 배경+취소선으로 구분) ---- */
+  .parcel-row.p-deleted .row-content{background:var(--warn-soft);}
+  .parcel-row.p-deleted .row-content .pinfo .addr{text-decoration:line-through;opacity:.8;}
+
+  /* ---- 목록 좌우 스와이프 삭제: 콘텐츠 뒤에 깔리는 삭제 배경 ---- */
+  .swipe-bg{
+    position:absolute;inset:0;z-index:0;display:flex;align-items:center;justify-content:flex-end;
+    padding-right:22px;background:var(--warn);color:#fff;
+  }
+  .swipe-bg span{font-size:13px;font-weight:700;opacity:.55;display:inline-block;transform:scale(.9);transition:opacity .1s ease,transform .1s ease;}
+  .swipe-bg.committing span{opacity:1;transform:scale(1.08);}
 
   .search-results{
     position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:19;
@@ -241,7 +281,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     0%{background:var(--emphasis-soft);}
     100%{background:transparent;}
   }
-  .parcel-row.row-flash{animation:rowFlash 1.4s ease-out;}
+  .parcel-row.row-flash .row-content{animation:rowFlash 1.4s ease-out;}
 
   .resume-toast{
     position:fixed;left:16px;right:16px;bottom:96px;z-index:60;
@@ -256,7 +296,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .resume-toast button.rt-close{border:none;padding:4px 6px;margin-left:auto;font-size:14px;}
 
   [data-drag-id]{touch-action:pan-y;}
-  [data-drag-id].dragging{touch-action:none;opacity:.55;box-shadow:0 8px 20px rgba(0,0,0,.18);position:relative;z-index:6;cursor:grabbing;}
+  [data-drag-id].dragging{touch-action:none;opacity:.55;box-shadow:0 8px 20px rgba(0,0,0,.18);position:relative;z-index:6;cursor:grabbing;overflow:visible;}
   body.drag-active, body.drag-active *{user-select:none !important;-webkit-user-select:none !important;}
 
   .empty-note{text-align:center;padding:50px 20px;color:var(--text-mute);font-size:13.5px;line-height:1.6;}
@@ -364,6 +404,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .storage-del-btn{flex-shrink:0;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:8px;padding:3px 9px;font-size:11px;font-weight:600;}
   .storage-clear-all-btn{width:100%;margin-top:4px;background:var(--warn-soft);color:var(--warn);border:1px solid var(--warn);border-radius:10px;padding:7px;font-size:12px;font-weight:600;}
 
+  #navPermanentDeleteBtn{color:var(--warn);border-color:var(--warn);background:var(--warn-soft);}
   .nav-addr-row{display:flex;align-items:center;gap:8px;background:var(--surface-2);
     border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin:0 0 14px;}
   .nav-addr-row #navAddrText{flex:1;font-size:13.5px;line-height:1.4;word-break:break-all;color:var(--text);}
@@ -430,6 +471,17 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <span id="quotaBadge" class="quotabadge">📊 조회량 확인중…</span>
     <button class="gearbtn" onclick="App.openSettings()" title="설정">⚙</button>
     <div class="step" id="stepBadge">업로드</div>
+  </div>
+</div>
+
+<!-- 계산/지도 화면 진입 도중 주소검색으로 필지를 바로 추가(기능 A). topbar 첫 줄은 손대지 않고
+     그 아래 별도의 sticky 행으로 붙임. App.goScreen()이 route/map일 때만 보이게 토글함. -->
+<div class="topbar-search hidden" id="topbarSearch">
+  <div class="searchbar" style="position:relative;">
+    <input type="text" id="addParcelInput" placeholder="🔍 주소 검색으로 필지 추가"
+      onkeydown="if(event.key==='Enter'){App.searchAddParcelCandidates();} else if(event.key==='Escape'){App.clearAddParcelSearch();}">
+    <button type="button" onclick="App.searchAddParcelCandidates()">검색</button>
+    <div id="addParcelResults" class="search-results hidden"></div>
   </div>
 </div>
 
@@ -690,6 +742,10 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   <div class="modal-card">
     <h3 id="navModalTitle">길찾기</h3>
     <p id="navModalSub" style="font-size:12.5px;color:var(--text-mute);margin:2px 0 10px;"></p>
+    <div class="row-btns hidden" id="navDeleteRow">
+      <button type="button" id="navDeleteToggleBtn" onclick="App.popupToggleDelete()">🗑 삭제</button>
+      <button type="button" id="navDeletePermBtn" style="color:var(--warn);border-color:var(--warn);" onclick="App.popupPermanentDelete()">완전삭제</button>
+    </div>
     <div class="nav-addr-row" id="navAddrRow">
       <span id="navAddrText"></span>
       <button type="button" id="navCopyBtn" onclick="App.copyNavAddress()">복사</button>
@@ -1246,6 +1302,31 @@ function placesKeywordSearchRaw(query){
   });
 }
 
+// 필지 추가(기능 A) 전용 키워드 검색 — 이 앱의 데이터 모델 전체가 지번(본번/부번)
+// 기준으로 설계돼 있어서, 도로명이 아니라 지번 주소(address_name)를 우선 사용함.
+// 기존 placesKeywordSearchRaw(도로명 우선, 출발지 검색이 씀)는 그대로 두고 건드리지 않음.
+function placesKeywordSearchJibunRaw(query){
+  return new Promise((resolve, reject)=>{
+    if(typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services){
+      reject(new Error('kakao-sdk-not-loaded')); return;
+    }
+    const places = new kakao.maps.services.Places();
+    places.keywordSearch(query, (result, status)=>{
+      if(status === kakao.maps.services.Status.OK){
+        resolve({ok:true, list: result.map(r=>({
+          name: r.place_name || r.address_name,
+          addr: r.address_name || r.road_address_name,
+          lat: parseFloat(r.y), lng: parseFloat(r.x)
+        }))});
+      } else if(status === kakao.maps.services.Status.ZERO_RESULT){
+        resolve({ok:true, list:[]});
+      } else {
+        resolve({error:'kakao-error', status});
+      }
+    });
+  });
+}
+
 const JUSO_SEARCH_KEY = 'YOUR_JUSO_SEARCH_API_KEY';
 const JUSO_COORD_KEY  = 'YOUR_JUSO_COORD_API_KEY';
 
@@ -1383,7 +1464,13 @@ const App = {
         const box = document.getElementById('parcelSearchResults');
         if(box) box.classList.add('hidden');
       }
+      if(!e.target.closest('#addParcelInput') && !e.target.closest('#addParcelResults')){
+        const box2 = document.getElementById('addParcelResults');
+        if(box2) box2.classList.add('hidden');
+      }
     });
+    window.addEventListener('resize', ()=> this._updateTopbarSearchLayout());
+    this._updateTopbarSearchLayout();
     window.addEventListener('scroll', ()=>this.updateFabScrollIcon(), {passive:true});
     this.updateFabScrollIcon();
     window.addEventListener('beforeunload', ()=>{ if(!this._skipPersistOnUnload) this.persistSession(true); });
@@ -1729,7 +1816,8 @@ const App = {
         sigunguKey: parsed.sigunguKey,
         extra: extraData,
         coord: cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source: importedCoord ? 'import' : 'cache'} : null,
-        done: doneVal
+        done: doneVal,
+        deleted: false
       };
       parcels.push(p);
       if(!villages[p.villageKey]){
@@ -1742,7 +1830,8 @@ const App = {
           key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
           centroid,
           collapsed:true, selected:false,
-          legalCode: codeVal ? String(codeVal) : null
+          legalCode: codeVal ? String(codeVal) : null,
+          deleted: false
         };
         if(importedVillageCoord) this.rememberVillageCoord(villages[p.villageKey]);
       } else if(!villages[p.villageKey].legalCode && codeVal){
@@ -1861,7 +1950,8 @@ const App = {
         sigunguKey: parsed.sigunguKey,
         extra: {...m.extra},
         coord: cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source:'cache'} : null,
-        done: false
+        done: false,
+        deleted: false
       };
       parcels.push(p);
       if(!villages[p.villageKey]){
@@ -1869,7 +1959,7 @@ const App = {
         villages[p.villageKey] = {
           key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
           centroid: ref ? {lat:ref.lat, lng:ref.lng, source:'ref'} : null,
-          collapsed:true, selected:false, legalCode:null
+          collapsed:true, selected:false, legalCode:null, deleted:false
         };
       }
       villages[p.villageKey].parcels.push(p);
@@ -1923,6 +2013,28 @@ const App = {
     if(name!=='map') this.clearPendingMapRelayouts(); // 지도 화면을 벗어나면 남은 재조정 예약을 취소(포커스 튐 버그 방지)
     if(name!=='map' && this._mapFocusMode) this.toggleMapFocus();
     if(GEOCODE_PROVIDER==='kakao') this.renderKakaoQuota();
+    // 주소검색-필지추가(기능 A) 행은 route/map 화면에서만 보임.
+    const topbarSearch = document.getElementById('topbarSearch');
+    if(topbarSearch) topbarSearch.classList.toggle('hidden', name!=='route' && name!=='map');
+    this._updateTopbarSearchLayout();
+  },
+
+  // topbar가 검색행 유무에 따라 1단/2단으로 높이가 달라지므로, next-card가 참조하는
+  // --topbar-h를 실측해서 매번 맞춰줌(빠뜨리면 스크롤 시 next-card가 검색행과 겹침).
+  _updateTopbarSearchLayout(){
+    const topbar = document.querySelector('.topbar');
+    const searchRow = document.getElementById('topbarSearch');
+    if(!topbar) return;
+    requestAnimationFrame(()=>{
+      const topbarH = topbar.offsetHeight;
+      let totalH = topbarH;
+      const searchVisible = searchRow && getComputedStyle(searchRow).display !== 'none';
+      if(searchVisible){
+        searchRow.style.top = topbarH + 'px';
+        totalH = topbarH + searchRow.offsetHeight;
+      }
+      document.documentElement.style.setProperty('--topbar-h', totalH + 'px');
+    });
   },
 
   toggleScreenSwitch(){
@@ -2039,7 +2151,10 @@ const App = {
   totalStats(){
     let total=0, done=0;
     this.villageOrder.forEach(k=>{
-      this.villages[k].parcels.forEach(p=>{ total++; if(p.done) done++; });
+      this.villages[k].parcels.forEach(p=>{
+        if(this.isParcelDeleted(p)) return;
+        total++; if(p.done) done++;
+      });
     });
     return {total, done};
   },
@@ -2050,14 +2165,63 @@ const App = {
 
   findNextParcel(){
     if(this.flatOrder && this.flatOrder.length>0){
-      for(const p of this.flatParcelList()){ if(!p.done) return {village:{name:p.villageName}, parcel:p}; }
+      for(const p of this.flatParcelList()){ if(!p.done && !this.isParcelDeleted(p)) return {village:{name:p.villageName}, parcel:p}; }
       return null;
     }
     for(const k of this.villageOrder){
       const v = this.villages[k];
-      for(const p of v.parcels){ if(!p.done) return {village:v, parcel:p}; }
+      if(v.deleted) continue;
+      for(const p of v.parcels){ if(!p.done && !this.isParcelDeleted(p)) return {village:v, parcel:p}; }
     }
     return null;
+  },
+
+  // ---------- 필지 행 / 마을 헤더 공통 렌더링 헬퍼 ----------
+  // flat / grouped-flat / village 세 가지 렌더링 모드가 마크업을 각자 따로 조립하면
+  // 코드가 3배로 늘고 버그 위험도 커지므로, 최종 HTML 생성은 이 두 헬퍼로 통일함.
+  // 각 호출부는 자신의 인덱스 계산·onclick 문자열 조립만 맡고, 스와이프/삭제 관련
+  // 마크업(.swipe-bg, .row-content, 삭제버튼 등)은 헬퍼가 공통으로 처리함.
+  parcelRowHtml(p, opts){
+    const deleted = this.isParcelDeleted(p);
+    return `
+      <div class="parcel-row ${p.done?'done':''} ${deleted?'p-deleted':''}" data-drag-scope="${opts.dragScope}" data-drag-id="${p.id}">
+        <div class="swipe-bg"><span>🗑 ${deleted?'완전삭제':'삭제'}</span></div>
+        <div class="row-content">
+          <div class="pnum">${opts.pnumLabel}</div>
+          <div class="pinfo">
+            <div class="addr">${p.addr}</div>
+            <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${opts.metaHtml||''}${this.extraLine(p)}</div>
+          </div>
+          <div class="pmove">
+            <button onclick="${opts.moveUpOnclick}" ${opts.moveUpDisabled?'disabled':''}>▲</button>
+            <button onclick="${opts.moveDownOnclick}" ${opts.moveDownDisabled?'disabled':''}>▼</button>
+            <button class="delbtn" title="${deleted?'복구':'삭제'}" onclick="App.toggleParcelDeleted(${p.id})">${deleted?'↺':'🗑'}</button>
+          </div>
+          <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
+        </div>
+      </div>`;
+  },
+  villageHeadHtml(v, key, opts){
+    const deleted = !!v.deleted;
+    const hasCentroid = !!v.centroid;
+    return `
+      <div class="vg-head">
+        <div class="swipe-bg"><span>🗑 ${deleted?'완전삭제':'삭제'}</span></div>
+        <div class="vg-head-inner">
+          <div class="order-badge">${opts.orderBadgeLabel}</div>
+          <div class="info" onclick="App.toggleCollapse('${key}')">
+            <div class="name">${v.name} <span style="color:var(--text-mute);font-weight:400;">· ${opts.sigunguLabel||''}</span></div>
+            <div class="prog">${opts.progLabel}${opts.centroidTag||''}</div>
+          </div>
+          <button class="locbtn ${hasCentroid?'set':''}" title="이 마을 좌표 저장" onclick="App.saveVillageCentroid('${key}')">📍</button>
+          <div class="movebtns">
+            <button onclick="${opts.moveUpOnclick}" ${opts.moveUpDisabled?'disabled':''}>▲</button>
+            <button onclick="${opts.moveDownOnclick}" ${opts.moveDownDisabled?'disabled':''}>▼</button>
+            <button class="delbtn" title="${deleted?'복구':'삭제'}" onclick="App.toggleVillageDeleted('${key}')">${deleted?'↺':'🗑'}</button>
+          </div>
+          <button class="chevron ${v.collapsed?'collapsed':''}" onclick="App.toggleCollapse('${key}')" title="${v.collapsed?'펼치기':'접기'}">${CHEVRON_SVG}</button>
+        </div>
+      </div>`;
   },
 
   renderRoute(){
@@ -2084,20 +2248,15 @@ const App = {
          p.coord.source==='import' ? ' · 좌표(엑셀)' : p.coord.source==='cache' ? ' · 좌표(캐시)' : ' · 좌표(수동)');
       list.innerHTML = this.viewSwitchHtml() +
         `<div class="village-group"><div class="parcel-list" style="border-top:none;">` +
-        ordered.map((p,i)=>`
-          <div class="parcel-row ${p.done?'done':''}" data-drag-scope="flat" data-drag-id="${p.id}">
-            <div class="pnum">${i+1}</div>
-            <div class="pinfo">
-              <div class="addr">${p.addr}</div>
-              <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${coordTag(p)} · ${p.villageName}${this.extraLine(p)}</div>
-            </div>
-            <div class="pmove">
-              <button onclick="App.moveFlatParcel(${i}, -1)" ${i===0?'disabled':''}>▲</button>
-              <button onclick="App.moveFlatParcel(${i}, 1)" ${i===ordered.length-1?'disabled':''}>▼</button>
-            </div>
-            <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
-          </div>
-        `).join('') + `</div></div>`;
+        ordered.map((p,i)=> this.parcelRowHtml(p, {
+          dragScope: 'flat',
+          pnumLabel: i+1,
+          moveUpOnclick: `App.moveFlatParcel(${i}, -1)`,
+          moveDownOnclick: `App.moveFlatParcel(${i}, 1)`,
+          moveUpDisabled: i===0,
+          moveDownDisabled: i===ordered.length-1,
+          metaHtml: `${coordTag(p)} · ${p.villageName}`
+        })).join('') + `</div></div>`;
       this.persistSession();
       return;
     }
@@ -2110,42 +2269,34 @@ const App = {
 
     list.innerHTML = this.viewSwitchHtml() + this.villageOrder.map((key, i)=>{
       const v = this.villages[key];
-      const vDone = v.parcels.filter(p=>p.done).length;
+      const activeParcels = v.parcels.filter(p=>!this.isParcelDeleted(p));
+      const vDone = activeParcels.filter(p=>p.done).length;
       const hasCentroid = !!v.centroid;
       const centroidTag = !v.centroid ? '' :
         (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : ' · 좌표(GPS)');
       const parcelsHtml = v.collapsed ? '' : `<div class="parcel-list">${
-        v.parcels.map((p, pi)=>`
-          <div class="parcel-row ${p.done?'done':''}" data-drag-scope="parcel" data-drag-id="${p.id}">
-            <div class="pnum">${pi+1}</div>
-            <div class="pinfo">
-              <div class="addr">${p.addr}</div>
-              <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${this.extraLine(p)}</div>
-            </div>
-            <div class="pmove">
-              <button onclick="App.moveParcel('${key}', ${pi}, -1)" ${pi===0?'disabled':''}>▲</button>
-              <button onclick="App.moveParcel('${key}', ${pi}, 1)" ${pi===v.parcels.length-1?'disabled':''}>▼</button>
-            </div>
-            <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
-          </div>
-        `).join('')
+        v.parcels.map((p, pi)=> this.parcelRowHtml(p, {
+          dragScope: 'parcel',
+          pnumLabel: pi+1,
+          moveUpOnclick: `App.moveParcel('${key}', ${pi}, -1)`,
+          moveDownOnclick: `App.moveParcel('${key}', ${pi}, 1)`,
+          moveUpDisabled: pi===0,
+          moveDownDisabled: pi===v.parcels.length-1
+        })).join('')
       }</div>`;
 
       return `
-        <div class="village-group" data-drag-scope="village" data-drag-id="${key}" data-village-key="${key}">
-          <div class="vg-head">
-            <div class="order-badge">${i+1}</div>
-            <div class="info" onclick="App.toggleCollapse('${key}')">
-              <div class="name">${v.name} <span style="color:var(--text-mute);font-weight:400;">· ${v.sigunguKey}</span></div>
-              <div class="prog">${vDone}/${v.parcels.length} 완료${centroidTag}</div>
-            </div>
-            <button class="locbtn ${hasCentroid?'set':''}" title="이 마을 좌표 저장" onclick="App.saveVillageCentroid('${key}')">📍</button>
-            <div class="movebtns">
-              <button onclick="App.moveVillage(${i}, -1)" ${i===0?'disabled':''}>▲</button>
-              <button onclick="App.moveVillage(${i}, 1)" ${i===this.villageOrder.length-1?'disabled':''}>▼</button>
-            </div>
-            <button class="chevron ${v.collapsed?'collapsed':''}" onclick="App.toggleCollapse('${key}')" title="${v.collapsed?'펼치기':'접기'}">${CHEVRON_SVG}</button>
-          </div>
+        <div class="village-group ${v.deleted?'v-deleted':''}" data-drag-scope="village" data-drag-id="${key}" data-village-key="${key}">
+          ${this.villageHeadHtml(v, key, {
+            orderBadgeLabel: i+1,
+            progLabel: `${vDone}/${activeParcels.length} 완료`,
+            centroidTag,
+            sigunguLabel: v.sigunguKey,
+            moveUpOnclick: `App.moveVillage(${i}, -1)`,
+            moveDownOnclick: `App.moveVillage(${i}, 1)`,
+            moveUpDisabled: i===0,
+            moveDownDisabled: i===this.villageOrder.length-1
+          })}
           ${parcelsHtml}
         </div>`;
     }).join('');
@@ -2172,43 +2323,35 @@ const App = {
     const groups = this.groupedFlatByVillage();
     return groups.map((g, gi)=>{
       const v = this.villages[g.key] || {};
-      const vDone = g.items.filter(it=>it.parcel.done).length;
+      const activeItems = g.items.filter(it=>!this.isParcelDeleted(it.parcel));
+      const vDone = activeItems.filter(it=>it.parcel.done).length;
       const collapsed = !!v.collapsed;
       const hasCentroid = !!v.centroid;
       const centroidTag = !v.centroid ? '' :
         (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : ' · 좌표(GPS)');
       const parcelsHtml = collapsed ? '' : `<div class="parcel-list">${
-        g.items.map(({parcel:p, globalIndex}, itemIdx)=>`
-          <div class="parcel-row ${p.done?'done':''}" data-drag-scope="gparcel" data-drag-id="${p.id}">
-            <div class="pnum">${globalIndex+1}</div>
-            <div class="pinfo">
-              <div class="addr">${p.addr}</div>
-              <div class="jibun">${p.jibun ? '지번 '+p.jibun : ''}${this.extraLine(p)}</div>
-            </div>
-            <div class="pmove">
-              <button onclick="App.moveFlatParcelInGroup('${g.key}', ${itemIdx}, -1)" ${itemIdx===0?'disabled':''}>▲</button>
-              <button onclick="App.moveFlatParcelInGroup('${g.key}', ${itemIdx}, 1)" ${itemIdx===g.items.length-1?'disabled':''}>▼</button>
-            </div>
-            <input type="checkbox" class="pcheck" ${p.done?'checked':''} onchange="App.toggleDone(${p.id}, this.checked)">
-          </div>
-        `).join('')
+        g.items.map(({parcel:p, globalIndex}, itemIdx)=> this.parcelRowHtml(p, {
+          dragScope: 'gparcel',
+          pnumLabel: globalIndex+1,
+          moveUpOnclick: `App.moveFlatParcelInGroup('${g.key}', ${itemIdx}, -1)`,
+          moveDownOnclick: `App.moveFlatParcelInGroup('${g.key}', ${itemIdx}, 1)`,
+          moveUpDisabled: itemIdx===0,
+          moveDownDisabled: itemIdx===g.items.length-1
+        })).join('')
       }</div>`;
 
       return `
-        <div class="village-group" data-drag-scope="group" data-drag-id="${g.key}" data-village-key="${g.key}">
-          <div class="vg-head">
-            <div class="order-badge">${gi+1}</div>
-            <div class="info" onclick="App.toggleCollapse('${g.key}')">
-              <div class="name">${g.name} <span style="color:var(--text-mute);font-weight:400;">· ${v.sigunguKey||''}</span></div>
-              <div class="prog">${vDone}/${g.items.length} 완료${centroidTag}</div>
-            </div>
-            <button class="locbtn ${hasCentroid?'set':''}" title="이 마을 좌표 저장" onclick="App.saveVillageCentroid('${g.key}')">📍</button>
-            <div class="movebtns">
-              <button onclick="App.moveFlatGroup(${gi}, -1)" ${gi===0?'disabled':''}>▲</button>
-              <button onclick="App.moveFlatGroup(${gi}, 1)" ${gi===groups.length-1?'disabled':''}>▼</button>
-            </div>
-            <button class="chevron ${collapsed?'collapsed':''}" onclick="App.toggleCollapse('${g.key}')" title="${collapsed?'펼치기':'접기'}">${CHEVRON_SVG}</button>
-          </div>
+        <div class="village-group ${v.deleted?'v-deleted':''}" data-drag-scope="group" data-drag-id="${g.key}" data-village-key="${g.key}">
+          ${this.villageHeadHtml(v, g.key, {
+            orderBadgeLabel: gi+1,
+            progLabel: `${vDone}/${activeItems.length} 완료`,
+            centroidTag,
+            sigunguLabel: v.sigunguKey||'',
+            moveUpOnclick: `App.moveFlatGroup(${gi}, -1)`,
+            moveDownOnclick: `App.moveFlatGroup(${gi}, 1)`,
+            moveUpDisabled: gi===0,
+            moveDownDisabled: gi===groups.length-1
+          })}
           ${parcelsHtml}
         </div>`;
     }).join('') + `<p class="hint" style="margin:10px 2px 0;">번호는 계산된 전체 순서예요. 버튼이나 꾹 눌러서 순서를 바로 바꿀 수 있어요.</p>`;
@@ -2226,13 +2369,284 @@ const App = {
     this.renderRoute();
   },
 
+  // ---------- 필지·마을 삭제(소프트삭제 → 복구 → 완전삭제) ----------
+  // "유효 삭제 여부": 필지 자신이 삭제됐거나, 소속 마을이 통째로 삭제됐으면 삭제된 것으로 취급.
+  // 지도/엑셀/통계/검색 등 "삭제된 걸 빼야 하는" 모든 곳에서 이 헬퍼 하나로 통일해서 씀.
+  isParcelDeleted(p){
+    return !!(p && (p.deleted || (this.villages[p.villageKey] && this.villages[p.villageKey].deleted)));
+  },
+  // 새로 추가하는 필지의 id는 "배열 위치"가 아니라 "값 기반 식별자"라서, 기존 id와
+  // 겹치지만 않으면 어떤 숫자든 상관없음. 가장 큰 기존 id + 1을 그대로 사용.
+  nextParcelId(){
+    return (this.parcels && this.parcels.length) ? Math.max(...this.parcels.map(p=>p.id)) + 1 : 0;
+  },
+
+  // 여러 화면(목록/지도)이 동시에 갱신돼야 하므로, 소프트/복구/완전삭제 각 함수가
+  // 알아서 renderRoute + (지도 화면이면) renderMapMarkers + persistSession까지 처리함.
+  _refreshAfterDeleteChange(){
+    this.renderRoute();
+    if(this._currentScreen==='map') this.renderMapMarkers(false);
+    this.persistSession();
+  },
+  softDeleteParcel(id, opts){
+    const p = this.parcels.find(x=>x.id===id);
+    if(!p || p.deleted) return;
+    p.deleted = true;
+    this._refreshAfterDeleteChange();
+    if(!(opts && opts.silent)){
+      const label = p.jibun ? `지번 ${p.jibun}` : p.addr;
+      this.showActionToast(`${label} 삭제됨`, {
+        actionLabel:'실행취소',
+        onAction: ()=> this.restoreParcel(id)
+      });
+    }
+  },
+  restoreParcel(id){
+    const p = this.parcels.find(x=>x.id===id);
+    if(!p || !p.deleted) return;
+    p.deleted = false;
+    this._refreshAfterDeleteChange();
+  },
+  permanentDeleteParcel(id, opts){
+    const p = this.parcels.find(x=>x.id===id);
+    if(!p) return;
+    const vKey = p.villageKey;
+    this.parcels = this.parcels.filter(x=>x.id!==id);
+    const v = this.villages[vKey];
+    if(v){
+      v.parcels = v.parcels.filter(x=>x.id!==id);
+      // 빈 마을 그룹(원래 마을이든 ::added 임시 그룹이든)이 목록에 덩그러니 남는 건
+      // 사용자 입장에서 버그처럼 보이므로, 소속 필지가 0개가 되면 마을도 같이 제거.
+      if(v.parcels.length===0){
+        delete this.villages[vKey];
+        this.villageOrder = this.villageOrder.filter(k=>k!==vKey);
+      }
+    }
+    this.flatOrder = (this.flatOrder||[]).filter(x=>x!==id);
+    this._refreshAfterDeleteChange();
+    if(!(opts && opts.silent)){
+      this.showActionToast('완전히 삭제되었습니다.');
+    }
+  },
+  toggleParcelDeleted(id){
+    const p = this.parcels.find(x=>x.id===id);
+    if(!p) return;
+    if(p.deleted) this.restoreParcel(id);
+    else this.softDeleteParcel(id);
+  },
+
+  softDeleteVillage(key, opts){
+    const v = this.villages[key];
+    if(!v || v.deleted) return;
+    v.deleted = true;
+    this._refreshAfterDeleteChange();
+    if(!(opts && opts.silent)){
+      this.showActionToast(`${v.name} 삭제됨`, {
+        actionLabel:'실행취소',
+        onAction: ()=> this.restoreVillage(key)
+      });
+    }
+  },
+  restoreVillage(key){
+    const v = this.villages[key];
+    if(!v || !v.deleted) return;
+    v.deleted = false;
+    this._refreshAfterDeleteChange();
+  },
+  permanentDeleteVillage(key, opts){
+    const v = this.villages[key];
+    if(!v) return;
+    const ids = v.parcels.map(p=>p.id);
+    this.parcels = this.parcels.filter(p=>!ids.includes(p.id));
+    this.flatOrder = (this.flatOrder||[]).filter(id=>!ids.includes(id));
+    delete this.villages[key];
+    this.villageOrder = this.villageOrder.filter(k=>k!==key);
+    this._refreshAfterDeleteChange();
+    if(!(opts && opts.silent)){
+      this.showActionToast('완전히 삭제되었습니다.');
+    }
+  },
+  toggleVillageDeleted(key){
+    const v = this.villages[key];
+    if(!v) return;
+    if(v.deleted) this.restoreVillage(key);
+    else this.softDeleteVillage(key);
+  },
+
+  // 스와이프 제스처(6장)에서 씀: 이미 삭제된 상태면 한 번 더 밀 때 완전삭제, 아니면 소프트삭제.
+  handleSwipeCommit(el, scope){
+    const rawId = el.dataset.dragId;
+    if(scope==='village' || scope==='group'){
+      const v = this.villages[rawId];
+      if(!v) return;
+      if(v.deleted) this.permanentDeleteVillage(rawId);
+      else this.softDeleteVillage(rawId);
+    } else {
+      const pid = Number(rawId);
+      const p = this.parcels.find(x=>x.id===pid);
+      if(!p) return;
+      if(p.deleted) this.permanentDeleteParcel(pid);
+      else this.softDeleteParcel(pid);
+    }
+  },
+
+  // ---------- 실행취소 가능한 범용 토스트(기존 resume-toast 패턴/CSS 재사용) ----------
+  showActionToast(message, opts){
+    opts = opts || {};
+    const el = document.createElement('div');
+    el.className = 'resume-toast';
+    const actionHtml = opts.actionLabel ? `<button type="button" data-toast-action>${opts.actionLabel}</button>` : '';
+    el.innerHTML = `<span>${message}</span>${actionHtml}<button type="button" class="rt-close">✕</button>`;
+    document.body.appendChild(el);
+    const timeoutMs = opts.timeoutMs || (opts.actionLabel ? 4500 : 3000);
+    const timer = setTimeout(()=>{ if(el.parentElement) el.remove(); }, timeoutMs);
+    const actionBtn = el.querySelector('[data-toast-action]');
+    if(actionBtn){
+      actionBtn.addEventListener('click', ()=>{
+        clearTimeout(timer);
+        el.remove();
+        if(opts.onAction) opts.onAction();
+      });
+    }
+    el.querySelector('.rt-close').addEventListener('click', ()=>{
+      clearTimeout(timer);
+      el.remove();
+    });
+  },
+
+  // ---------- 기능 A: 상단 검색으로 필지 추가(조사 도중) ----------
+  // #startAddrInput(출발지 검색)과 동일한 패턴(정확주소 지오코딩 + 키워드검색 병행).
+  async searchAddParcelCandidates(){
+    const input = document.getElementById('addParcelInput');
+    const text = (input.value || '').trim();
+    if(!text) return;
+    if(!this.hasActiveGeocodeKey()){
+      alert('지오코딩 API 키가 아직 설정되지 않았어요.');
+      return;
+    }
+    const box = document.getElementById('addParcelResults');
+    box.innerHTML = `<div class="search-result-empty">검색 중...</div>`;
+    box.classList.remove('hidden');
+
+    const exact = await this.geocodeAddress(text);
+    let candidates = [];
+    if(exact.ok) candidates.push({name:text, addr:text, lat:exact.lat, lng:exact.lng});
+
+    if(GEOCODE_PROVIDER === 'kakao'){
+      try{
+        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
+        const kw = await placesKeywordSearchJibunRaw(text);
+        if(kw.ok){
+          bumpKakaoQuota(_kakaoKeyIndex);
+          bumpSharedKakaoQuota(_kakaoKeyIndex);
+          this.renderKakaoQuota();
+          kw.list.forEach(item=>{
+            if(!candidates.some(c=>c.lat===item.lat && c.lng===item.lng)) candidates.push(item);
+          });
+        }
+      }catch(e){ /* 키워드검색은 보조 수단이라 실패해도 정확주소 결과만으로 진행 */ }
+    }
+
+    if(candidates.length===0){
+      box.innerHTML = `<div class="search-result-empty">결과가 없어요. 다른 표현으로 검색해보세요.</div>`;
+      return;
+    }
+    if(candidates.length===1){
+      this.addParcelFromCandidate(candidates[0]);
+      this.clearAddParcelSearch();
+      return;
+    }
+    this.renderAddParcelCandidates(candidates);
+  },
+  renderAddParcelCandidates(list){
+    this._addParcelCandidates = list;
+    const box = document.getElementById('addParcelResults');
+    box.innerHTML = list.slice(0,8).map((c,i)=>`
+      <div class="search-result-row" onclick="App.pickAddParcelCandidate(${i})">
+        <div class="sr-addr">${c.name}</div>
+        ${c.addr && c.addr!==c.name ? `<div class="sr-sub">${c.addr}</div>` : ''}
+      </div>`).join('');
+    box.classList.remove('hidden');
+  },
+  pickAddParcelCandidate(i){
+    const c = (this._addParcelCandidates||[])[i];
+    if(!c) return;
+    this.addParcelFromCandidate(c);
+    this.clearAddParcelSearch();
+  },
+  clearAddParcelSearch(){
+    const input = document.getElementById('addParcelInput');
+    if(input) input.value = '';
+    const box = document.getElementById('addParcelResults');
+    if(box){ box.innerHTML = ''; box.classList.add('hidden'); }
+    this._addParcelCandidates = null;
+  },
+  // 후보 선택 즉시 필지로 확정 추가. 좌표는 검색(지오코딩) 결과를 그대로 씀 —
+  // 별도의 좌표계산 단계가 필요 없음(3.3 참고).
+  addParcelFromCandidate(c){
+    const addrText = c.addr || c.name;
+    const parsed = parseAddress(addrText);
+
+    // 지번(본번/부번) 최대한 추출 — 실패해도 안전하게 빈 값으로 남겨둠(3.3).
+    let bon = '', bu = '';
+    const m = addrText.match(/(\d+)(?:-(\d+))?\s*$/);
+    if(m){ bon = m[1] || ''; bu = m[2] || ''; }
+    const jibun = bon ? jibunLabel(bon, bu) : '';
+    const sortKey = bon ? jibunSortKey(bon, bu) : 0;
+
+    const id = this.nextParcelId();
+
+    // 마을 소속 처리(3.4): 이미 화면에 활성화된 마을이면 그대로 병합, 그 외에는
+    // 절대 기존 key를 재사용하지 않고 전용 '::added' 그룹을 씀(비활성 마을 오염 방지).
+    let targetKey = parsed.villageKey;
+    const activeExisting = !!(this.villages[parsed.villageKey] && this.villageOrder.includes(parsed.villageKey));
+    if(!activeExisting){
+      targetKey = parsed.villageKey + '::added';
+      if(!this.villages[targetKey]){
+        this.villages[targetKey] = {
+          key: targetKey, name: parsed.villageName, sigunguKey: parsed.sigunguKey,
+          parcels: [], centroid: null, collapsed: false, selected: true, legalCode: null
+        };
+      }
+      if(!this.villageOrder.includes(targetKey)) this.villageOrder.push(targetKey);
+    }
+
+    const parcel = {
+      id, addr: addrText, bon, bu, code:'', jibun, sortKey,
+      villageKey: targetKey, villageName: this.villages[targetKey].name, sigunguKey: parsed.sigunguKey,
+      extra: {}, coord: {lat:c.lat, lng:c.lng, source:'search'}, done:false
+    };
+    this.villages[targetKey].parcels.push(parcel);
+    this.parcels.push(parcel);
+
+    if(this.routeMode==='flat' && this.flatOrder && this.flatOrder.length>0){
+      this.flatOrder.push(id);
+    }
+
+    this.renderRoute();
+    if(this._currentScreen==='map') this.renderMapMarkers(false);
+    this.persistSession();
+
+    // 새로 추가된 행을 화면에 스크롤하고 기존 row-flash 애니메이션으로 강조.
+    setTimeout(()=>{
+      const rowEl = document.querySelector(`[data-drag-id="${id}"]`);
+      if(rowEl){
+        rowEl.scrollIntoView({behavior:'smooth', block:'center'});
+        rowEl.classList.add('row-flash');
+        setTimeout(()=> rowEl.classList.remove('row-flash'), 1600);
+      }
+    }, 60);
+  },
+
   // ---------- 필지 검색(주소·지번) → 바로 이동 ----------
   parcelSearchMatches(q){
     const qLower = q.trim().toLowerCase();
     if(!qLower) return [];
     return this.parcels.filter(p=>
-      (p.addr && p.addr.toLowerCase().includes(qLower)) ||
-      (p.jibun && String(p.jibun).toLowerCase().includes(qLower))
+      !this.isParcelDeleted(p) && (
+        (p.addr && p.addr.toLowerCase().includes(qLower)) ||
+        (p.jibun && String(p.jibun).toLowerCase().includes(qLower))
+      )
     ).slice(0, 8);
   },
   onParcelSearchInput(){
@@ -2412,6 +2826,7 @@ const App = {
         clearTimeout(this._zoomRerenderTimer);
         this._zoomRerenderTimer = setTimeout(()=>{ this.renderMapMarkers(false); }, 200);
       });
+      this.bindMapPinLongPress(container);
     }
     // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
     // 전환된 직후엔 브라우저 레이아웃이 아직 확정되지 않아 컨테이너 크기를 잘못 읽는 경우가
@@ -2766,6 +3181,7 @@ const App = {
     this.applyMapFocusHeight();
     // 컨테이너 크기가 바뀌므로 레이아웃이 확정된 뒤 relayout을 걸어줌
     this.robustMapRelayout();
+    this._updateTopbarSearchLayout();
     if(this._mapFocusMode && !this._mapFocusResizeBound){
       this._mapFocusResizeBound = true;
       window.addEventListener('resize', ()=>{ if(this._mapFocusMode) this.applyMapFocusHeight(); });
@@ -2814,9 +3230,59 @@ const App = {
     }
   },
 
+  // ---------- 지도 핀 길게 누르기(0.3~5초) → 소프트 삭제 ----------
+  // 핀은 CustomOverlay가 그리는 일반 DOM div라서 표준 Pointer Event를 그대로 씀.
+  // 핀 DOM이 renderMapMarkers()가 호출될 때마다 통째로 새로 그려지므로, 개별 핀에
+  // 직접 리스너를 붙이지 않고 지도 컨테이너에 한 번만 위임(delegated) 방식으로 등록.
+  bindMapPinLongPress(container){
+    const MIN_MS = 300, MAX_MS = 5000, MOVE_PX = 10;
+    let state = null;
+    const clear = ()=>{
+      if(state){ clearTimeout(state.minTimer); clearTimeout(state.maxTimer); state = null; }
+    };
+    container.addEventListener('pointerdown', (e)=>{
+      const pinEl = e.target.closest('[data-parcel-idx]');
+      const villageEl = !pinEl ? e.target.closest('[data-village-key]') : null;
+      if(!pinEl && !villageEl) return;
+      clear();
+      const type = pinEl ? 'parcel' : 'village';
+      const id = pinEl ? pinEl.dataset.parcelIdx : villageEl.dataset.villageKey;
+      state = {type, id, startX:e.clientX, startY:e.clientY, pointerId:e.pointerId, ready:false, expired:false};
+      state.minTimer = setTimeout(()=>{ if(state) state.ready = true; }, MIN_MS);
+      state.maxTimer = setTimeout(()=>{ if(state) state.expired = true; }, MAX_MS);
+    });
+    container.addEventListener('pointermove', (e)=>{
+      if(!state || state.pointerId!==e.pointerId) return;
+      // 지도 팬(이동) 제스처와 구분하기 위해, 손가락이 많이 움직이면 롱프레스 취소.
+      if(Math.abs(e.clientX-state.startX)>MOVE_PX || Math.abs(e.clientY-state.startY)>MOVE_PX){ clear(); }
+    });
+    const finish = (e)=>{
+      if(!state || state.pointerId!==e.pointerId) return;
+      const s = state;
+      clear();
+      // ready===false(0.3초 미만): 짧은 탭 → 아무 것도 안 하고 기존 onclick이 팝업을 열게 둠.
+      // expired===true(5초 초과): 취소 취급 → 아무 것도 안 함(팝업도 삭제도 안 열림).
+      if(s.ready && !s.expired){
+        if(navigator.vibrate) navigator.vibrate(15);
+        this._pinLongPressJustFired = true;
+        if(s.type==='parcel'){
+          const p = (this._mapParcelCache||[])[Number(s.id)];
+          if(p) this.softDeleteParcel(p.id);
+        } else {
+          this.softDeleteVillage(s.id);
+        }
+      }
+    };
+    container.addEventListener('pointerup', finish);
+    container.addEventListener('pointercancel', ()=> clear());
+  },
+
   // 필지/마을 핀 클릭 — "핀 선택 길찾기 모드"가 켜져 있으면 팝업 대신 선택 목록에
   // 담고, 꺼져 있으면 기존처럼 지도앱 길찾기 팝업을 띄움.
+  // 핀 롱프레스로 삭제를 확정한 직후, 브라우저가 뒤늦게 한 번 더 click을 발생시켜
+  // 의도치 않게 팝업이 열리는 것을 막기 위한 1회성 가드.
   showParcelPin(i){
+    if(this._pinLongPressJustFired){ this._pinLongPressJustFired = false; return; }
     const p = (this._mapParcelCache||[])[i];
     if(!p || !p.coord) return;
     if(this.navSelectMode){ this.addNavSelectPoint(p.coord.lat, p.coord.lng, this.pinLabelForParcel(p, i)); return; }
@@ -2824,7 +3290,7 @@ const App = {
     const jibunPart = p.jibun ? ` (지번 ${p.jibun})` : '';
     const title = (withOrder ? `${i+1}번째 필지${jibunPart}` : `필지${jibunPart}`);
     const fullAddr = fullGeocodeAddr(p.addr, p.jibun);
-    this.openNavPopup(p.coord.lat, p.coord.lng, title, '', fullAddr);
+    this.openNavPopup(p.coord.lat, p.coord.lng, title, '', fullAddr, 'parcel', p.id);
   },
   pinLabelForParcel(p, i){
     const withOrder = (this.flatOrder && this.flatOrder.length>0);
@@ -2832,11 +3298,12 @@ const App = {
   },
 
   showVillagePin(key){
+    if(this._pinLongPressJustFired){ this._pinLongPressJustFired = false; return; }
     const v = this.villages[key];
     if(!v || !v.centroid) return;
     if(this.navSelectMode){ this.addNavSelectPoint(v.centroid.lat, v.centroid.lng, v.name); return; }
     const fullAddr = [v.sigunguKey, v.name].filter(Boolean).join(' ');
-    this.openNavPopup(v.centroid.lat, v.centroid.lng, v.name, `필지 ${v.parcels.length}개`, fullAddr);
+    this.openNavPopup(v.centroid.lat, v.centroid.lng, v.name, `필지 ${v.parcels.length}개`, fullAddr, 'village', key);
   },
 
   // ---------- 핀 선택 길찾기 모드 ----------
@@ -3142,8 +3609,8 @@ const App = {
     }
   },
 
-  openNavPopup(lat, lng, title, subtitle, addressText){
-    this._navTarget = {lat, lng, name: addressText || title || '목적지'};
+  openNavPopup(lat, lng, title, subtitle, addressText, refType, refId){
+    this._navTarget = {lat, lng, name: addressText || title || '목적지', refType, refId};
     document.getElementById('navModalTitle').textContent = title || '길찾기';
     const subEl = document.getElementById('navModalSub');
     subEl.textContent = subtitle || '';
@@ -3155,7 +3622,38 @@ const App = {
     const copyBtn = document.getElementById('navCopyBtn');
     copyBtn.textContent = '복사';
     copyBtn.classList.remove('copied');
+    this.renderNavDeleteRow();
     document.getElementById('navModal').classList.remove('hidden');
+  },
+  // refType/refId가 있을 때만 삭제 버튼 줄을 보여주고, 현재 삭제 상태에 맞춰
+  // 버튼 라벨을 그림(소프트삭제↔복구 토글 + 별도 완전삭제 버튼).
+  renderNavDeleteRow(){
+    const row = document.getElementById('navDeleteRow');
+    const t = this._navTarget;
+    if(!t || !t.refType || (t.refType==='parcel' ? !this.parcels.find(p=>p.id===t.refId) : !this.villages[t.refId])){
+      row.classList.add('hidden');
+      return;
+    }
+    row.classList.remove('hidden');
+    const deleted = t.refType==='parcel'
+      ? !!(this.parcels.find(p=>p.id===t.refId) || {}).deleted
+      : !!(this.villages[t.refId] || {}).deleted;
+    const toggleBtn = document.getElementById('navDeleteToggleBtn');
+    toggleBtn.textContent = deleted ? '↺ 복구' : '🗑 삭제';
+  },
+  popupToggleDelete(){
+    const t = this._navTarget;
+    if(!t || !t.refType) return;
+    if(t.refType==='parcel') this.toggleParcelDeleted(t.refId);
+    else this.toggleVillageDeleted(t.refId);
+    this.renderNavDeleteRow();
+  },
+  popupPermanentDelete(){
+    const t = this._navTarget;
+    if(!t || !t.refType) return;
+    if(t.refType==='parcel') this.permanentDeleteParcel(t.refId);
+    else this.permanentDeleteVillage(t.refId);
+    this.closeNavModal();
   },
   closeNavModal(){
     document.getElementById('navModal').classList.add('hidden');
@@ -3300,12 +3798,12 @@ const App = {
     if(showVillages){
       this.villageOrder.forEach(k=>{
         const v = this.villages[k];
-        if(!v.centroid || v.mapHidden) return;
+        if(!v.centroid || v.mapHidden || v.deleted) return;
         const color = colorMap[k];
         const pos = new kakao.maps.LatLng(v.centroid.lat, v.centroid.lng);
         const overlay = new kakao.maps.CustomOverlay({
           position: pos, yAnchor: 1, xAnchor: 0.5, zIndex: 4,
-          content: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;" onclick="App.showVillagePin('${k}')">
+          content: `<div style="display:flex;flex-direction:column;align-items:center;cursor:pointer;" onclick="App.showVillagePin('${k}')" data-village-key="${k}">
             <div style="background:${color};color:#fff;font-size:11.5px;font-weight:700;padding:2px 8px;
               border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.3);">${v.name} (${v.parcels.length})</div>
             <svg width="28" height="36" viewBox="0 0 28 36" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.45));">
@@ -3340,9 +3838,9 @@ const App = {
       any = true;
     }
 
-    const parcelList = (this.flatOrder && this.flatOrder.length)
+    const parcelList = ((this.flatOrder && this.flatOrder.length)
       ? this.flatParcelList()
-      : this.villageOrder.flatMap(k=>this.villages[k].parcels);
+      : this.villageOrder.flatMap(k=>this.villages[k].parcels)).filter(p=>!this.isParcelDeleted(p));
     this._mapParcelCache = parcelList;
     const hasOrder = this.flatOrder && this.flatOrder.length>0;
 
@@ -3400,7 +3898,7 @@ const App = {
         const jibunPadV = Math.max(0, Math.round(1 * labelScale));
         const jibunPadH = Math.max(3, Math.round(6 * labelScale));
         const hasJibun = !!(p.jibun && showJibun);
-        const pinContent = `<div onclick="App.showParcelPin(${i})" title="${p.addr.replace(/"/g,'&quot;')}"
+        const pinContent = `<div onclick="App.showParcelPin(${i})" data-parcel-idx="${i}" title="${p.addr.replace(/"/g,'&quot;')}"
             style="width:${badgeSize}px;height:${badgeSize}px;display:flex;align-items:center;justify-content:center;
             cursor:pointer;flex-shrink:0;"><span style="display:block;width:${dotSize}px;height:${dotSize}px;
             border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4);"></span></div>`;
@@ -4016,7 +4514,7 @@ const App = {
       return;
     }
     const all = this.villageOrder.flatMap(k=>this.villages[k].parcels);
-    const targets = all.filter(p=>!p.coord);
+    const targets = all.filter(p=>!p.coord && !this.isParcelDeleted(p));
     if(targets.length===0){ alert('선택된 필지는 위치 확인이 이미 모두 끝났어요.'); return; }
     const paceMs = GEOCODE_PROVIDER === 'juso' ? JUSO_PACE_MS : 0;
     const estMin = Math.max(1, Math.ceil(targets.length * Math.max(paceMs,120) / 60000));
@@ -4165,7 +4663,7 @@ const App = {
   },
 
   computeFlatOrder(useStartPoint){
-    const all = this.villageOrder.flatMap(k=>this.villages[k].parcels);
+    const all = this.villageOrder.flatMap(k=>this.villages[k].parcels).filter(p=>!this.isParcelDeleted(p));
     const withCoord = all.filter(p=>p.coord);
     const withoutCoord = all.filter(p=>!p.coord);
     if(withCoord.length < 2){
@@ -4255,11 +4753,12 @@ const App = {
       rows.push(row);
     };
     if(this.routeMode==='flat'){
-      this.flatParcelList().forEach(p=> pushRow(p, p.villageName, p.sigunguKey));
+      this.flatParcelList().forEach(p=>{ if(this.isParcelDeleted(p)) return; pushRow(p, p.villageName, p.sigunguKey); });
     } else {
       this.villageOrder.forEach(key=>{
         const v = this.villages[key];
-        v.parcels.forEach(p=> pushRow(p, v.name, v.sigunguKey));
+        if(v.deleted) return;
+        v.parcels.forEach(p=>{ if(this.isParcelDeleted(p)) return; pushRow(p, v.name, v.sigunguKey); });
       });
     }
     if(rows.length===0){ alert('내보낼 필지가 없어요.'); return; }
@@ -4276,11 +4775,63 @@ function initDragReorder(){
   if(!root) return;
   const LONG_PRESS_MS = 380;
   const MOVE_CANCEL_PX = 10;
+  const SWIPE_START_PX = 10;   // 이 이상 수평으로 움직이고 수평이 우세하면 스와이프로 확정
+  const SWIPE_COMMIT_PX = 90;  // 이 이상 밀고 손을 떼면 삭제/완전삭제 커밋
   let pending = null;
   let dragging = null;
+  let swiping = null;
 
   function clearPending(){
     if(pending){ clearTimeout(pending.timer); pending = null; }
+  }
+
+  // scope별로 실제 스와이프 대상(content)과 그 뒤에 깔린 배경(bg)을 찾아줌.
+  // parcel/flat/gparcel scope: el 자신이 .parcel-row → 그 안의 .row-content/.swipe-bg
+  // village/group scope: el이 .village-group → 그 첫 자식 .vg-head 안의 .vg-head-inner/.swipe-bg
+  // (세로 드래그는 지금처럼 el 전체를 옮기고, 스와이프의 시각적 이동만 head 안쪽으로 한정)
+  function swipeElsFor(el, scope){
+    if(scope==='village' || scope==='group'){
+      const head = el.querySelector(':scope > .vg-head');
+      if(!head) return null;
+      return { content: head.querySelector(':scope > .vg-head-inner'), bg: head.querySelector(':scope > .swipe-bg') };
+    }
+    return { content: el.querySelector(':scope > .row-content'), bg: el.querySelector(':scope > .swipe-bg') };
+  }
+
+  function beginSwipe(el, scope, pointerId, startX){
+    const els = swipeElsFor(el, scope);
+    if(!els || !els.content) return;
+    swiping = {el, scope, pointerId, startX, content:els.content, bg:els.bg, dx:0};
+    swiping.content.style.transition = 'none';
+    try{ el.setPointerCapture(pointerId); }catch(err){}
+  }
+
+  function onSwipeMove(e){
+    const s = swiping;
+    let dx = e.clientX - s.startX;
+    if(dx > 0) dx = 0; // 왼쪽으로만 밀림
+    s.dx = dx;
+    s.content.style.transform = `translateX(${dx}px)`;
+    if(s.bg) s.bg.classList.toggle('committing', Math.abs(dx) >= SWIPE_COMMIT_PX);
+  }
+
+  function endSwipe(allowCommit){
+    const s = swiping;
+    if(!s) return;
+    swiping = null;
+    try{ s.el.releasePointerCapture(s.pointerId); }catch(err){}
+    const committed = allowCommit && Math.abs(s.dx) >= SWIPE_COMMIT_PX;
+    if(committed){
+      if(navigator.vibrate) navigator.vibrate(12);
+      s.content.style.transition = 'transform 180ms ease, opacity 180ms ease';
+      s.content.style.transform = 'translateX(-100%)';
+      s.content.style.opacity = '0';
+      setTimeout(()=>{ App.handleSwipeCommit(s.el, s.scope); }, 180);
+    } else {
+      s.content.style.transition = 'transform 150ms ease';
+      s.content.style.transform = '';
+      if(s.bg) s.bg.classList.remove('committing');
+    }
   }
 
   function beginDrag(el, pointerId){
@@ -4364,18 +4915,29 @@ function initDragReorder(){
     if(e.pointerType==='mouse') e.preventDefault();
     clearPending();
     const startX = e.clientX, startY = e.clientY, pointerId = e.pointerId;
+    const scope = el.dataset.dragScope;
     const timer = setTimeout(()=>{
       pending = null;
       beginDrag(el, pointerId);
     }, LONG_PRESS_MS);
-    pending = {el, timer, startX, startY, pointerId};
+    pending = {el, timer, startX, startY, pointerId, scope};
   });
 
   root.addEventListener('pointermove', (e)=>{
     if(pending && pending.pointerId===e.pointerId){
-      if(Math.abs(e.clientX-pending.startX)>MOVE_CANCEL_PX || Math.abs(e.clientY-pending.startY)>MOVE_CANCEL_PX){
+      const dx = e.clientX - pending.startX, dy = e.clientY - pending.startY;
+      if(!swiping && Math.abs(dx) > SWIPE_START_PX && Math.abs(dx) > Math.abs(dy)){
+        // 수평 이동이 우세 → 스와이프로 확정, 롱프레스(드래그정렬) 타이머는 취소
+        const el = pending.el, scope = pending.scope, pointerId2 = pending.pointerId, startX = pending.startX;
+        clearPending();
+        beginSwipe(el, scope, pointerId2, startX);
+        onSwipeMove(e);
+      } else if(Math.abs(dx)>MOVE_CANCEL_PX || Math.abs(dy)>MOVE_CANCEL_PX){
         clearPending();
       }
+    } else if(swiping && swiping.pointerId===e.pointerId){
+      e.preventDefault();
+      onSwipeMove(e);
     }
     if(dragging && dragging.pointerId===e.pointerId){
       e.preventDefault();
@@ -4385,10 +4947,12 @@ function initDragReorder(){
 
   root.addEventListener('pointerup', (e)=>{
     if(pending && pending.pointerId===e.pointerId) clearPending();
+    if(swiping && swiping.pointerId===e.pointerId) endSwipe(true);
     if(dragging && dragging.pointerId===e.pointerId) endDrag();
   });
   root.addEventListener('pointercancel', (e)=>{
     if(pending && pending.pointerId===e.pointerId) clearPending();
+    if(swiping && swiping.pointerId===e.pointerId) endSwipe(false);
     if(dragging && dragging.pointerId===e.pointerId) endDrag();
   });
 }
