@@ -3080,20 +3080,27 @@ const App = {
     }
   },
 
-  // [버그 수정/보완] 버튼을 숨긴 뒤 어떤 이유로든(브라우저 특이 동작, 예상 못한 예외
-  // 등) 정상적으로 다시 나타나지 못하는 극단적인 경우를 대비한 안전장치.
-  // 버튼이 숨겨진 상태에서 사용자가 화면을 터치하거나(모바일) 마우스를 움직이거나
-  // 클릭/키 조작을 하면(PC), 그 즉시 숨김을 풀어 버튼을 복구시킴.
-  // 정상 캡처 흐름에서는 캡처가 끝나자마자 바로 복구되므로 이 리스너가 실제로
-  // 개입할 일은 거의 없지만, 혹시 모를 상황에서 사용자가 "아이콘이 없어졌는데
-  // 안 돌아온다"고 느끼는 일이 없도록 함.
-  _armCaptureHideSafetyNet(fabStack){
+  // [버그 수정] 이전 버전에서는 버튼을 숨기자마자(capture-hiding 추가 직후) 바로
+  // mousemove 등 리스너를 걸어서, 화면공유 권한창이 닫히며 포커스가 돌아올 때
+  // 자연스럽게 일어나는 아주 살짝의 마우스 움직임만으로도 실제 캡처(drawImage)가
+  // 일어나기도 전에 버튼이 먼저 복구돼버리는 문제가 있었음 — 그 결과 버튼이 다시
+  // 보이는 상태로 화면이 찍혔음.
+  // → 그래서 지금은 리스너를 "즉시" 걸지 않고, guardMs(정상 캡처 소요시간보다 훨씬
+  // 넉넉한 시간)가 지난 뒤에도 여전히 숨김 상태일 때만 리스너를 건다. 정상적인
+  // 캡처는 1초 안에 다 끝나므로 이 지연 덕분에 정상 흐름에는 전혀 개입하지 않고,
+  // 정말로 뭔가 잘못돼서 버튼이 안 돌아오는 극단적 상황에서만 작동함.
+  _armCaptureHideSafetyNet(fabStack, guardMs=3000){
     if(!fabStack) return ()=>{};
-    const restore = ()=>{ fabStack.classList.remove('capture-hiding'); };
-    const opts = { passive:true };
-    const events = ['mousemove','pointerdown','touchstart','keydown'];
-    events.forEach(ev=>document.addEventListener(ev, restore, opts));
-    return ()=>{ events.forEach(ev=>document.removeEventListener(ev, restore, opts)); };
+    let detach = ()=>{};
+    const guardTimer = setTimeout(()=>{
+      if(!fabStack.classList.contains('capture-hiding')) return; // 이미 정상 복구됨
+      const restore = ()=>{ fabStack.classList.remove('capture-hiding'); };
+      const opts = { passive:true };
+      const events = ['mousemove','pointerdown','touchstart','keydown'];
+      events.forEach(ev=>document.addEventListener(ev, restore, opts));
+      detach = ()=>events.forEach(ev=>document.removeEventListener(ev, restore, opts));
+    }, guardMs);
+    return ()=>{ clearTimeout(guardTimer); detach(); };
   },
 
   // 지도 화면 캡처(스크린샷) 기능.
