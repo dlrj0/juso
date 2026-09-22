@@ -1260,7 +1260,13 @@ function geocoderKakaoRaw(addrText){
     const geocoder = new kakao.maps.services.Geocoder();
     geocoder.addressSearch(addrText, (result, status)=>{
       if(status === kakao.maps.services.Status.OK && result && result[0]){
-        resolve({ok:true, lat:parseFloat(result[0].y), lng:parseFloat(result[0].x)});
+        const r0 = result[0];
+        // r0.address_name은 검색어가 도로명이었으면 도로명으로, 지번이었으면 지번으로
+        // 나오는 등 "무엇으로 검색했는지"를 그대로 반영함. 이 앱의 마을 분류(parseAddress)와
+        // 지번(본번/부번) 파싱은 지번 주소를 전제로 하므로, r0.address(지번 상세 객체)의
+        // address_name을 우선 사용해서 사용자가 도로명으로 검색해도 지번 기준으로 정규화되게 함.
+        const normalizedAddr = (r0.address && r0.address.address_name) || r0.address_name || addrText;
+        resolve({ok:true, lat:parseFloat(r0.y), lng:parseFloat(r0.x), addr: normalizedAddr});
       } else if(status === kakao.maps.services.Status.ZERO_RESULT){
         resolve({error:'no-match'});
       } else {
@@ -1389,7 +1395,12 @@ function jibunSortKey(bon,bu){
 }
 function fullGeocodeAddr(addr, jibun){
   const a = String(addr||'').trim();
-  return jibun ? `${a} ${jibun}` : a;
+  if(!jibun) return a;
+  // addr 자체에 이미 지번이 포함돼 있으면(검색으로 추가된 필지는 addr이 API가 돌려준
+  // 완전한 주소라 지번까지 포함돼 있음) 중복해서 붙이지 않음 — 중복되면 지오코딩
+  // API가 주소를 못 찾는 원인이 될 수 있음.
+  if(a.endsWith(String(jibun).trim())) return a;
+  return `${a} ${jibun}`;
 }
 
 function parseImportedCoord(latRaw, lngRaw){
@@ -2211,7 +2222,8 @@ const App = {
       const ordered = this.flatParcelList();
       const coordTag = (p)=> !p.coord ? ' · 좌표없음' :
         (p.coord.source==='juso-api' ? ' · 좌표(정부API)' : p.coord.source==='kakao-api' ? ' · 좌표(카카오API)' :
-         p.coord.source==='import' ? ' · 좌표(엑셀)' : p.coord.source==='cache' ? ' · 좌표(캐시)' : ' · 좌표(수동)');
+         p.coord.source==='import' ? ' · 좌표(엑셀)' : p.coord.source==='cache' ? ' · 좌표(캐시)' :
+         p.coord.source==='search' ? ' · 좌표(검색)' : ' · 좌표(수동)');
       list.innerHTML = this.viewSwitchHtml() +
         `<div class="village-group"><div class="parcel-list" style="border-top:none;">` +
         ordered.map((p,i)=> this.parcelRowHtml(p, {
@@ -2496,7 +2508,10 @@ const App = {
 
     const exact = await this.geocodeAddress(text);
     let candidates = [];
-    if(exact.ok) candidates.push({name:text, addr:text, lat:exact.lat, lng:exact.lng});
+    // addr은 정식 지번 주소(exact.addr)를 우선 사용 — 사용자가 도로명이나 상위 행정구역
+    // 없이 검색해도(예: "OO로 15"만 입력) 마을 분류·지번 파싱이 제대로 되게 하기 위함.
+    // 표시용 이름(name)은 사용자가 입력한 원문 그대로 보여줌.
+    if(exact.ok) candidates.push({name:text, addr: exact.addr || text, lat:exact.lat, lng:exact.lng});
 
     if(GEOCODE_PROVIDER === 'kakao'){
       try{
@@ -2598,10 +2613,17 @@ const App = {
       if(!this.villageOrder.includes(targetKey)) this.villageOrder.push(targetKey);
     }
 
+    // 검색 결과 좌표가 실제로 유효한(한국 영역 범위 안의) 숫자인지 확인.
+    // 확인 없이 그대로 저장하면 coord가 "값이 있는 객체"이기만 해도 계산화면의
+    // '필지 좌표확인'은 "이미 끝났다"고 보고 건너뛰어버려서, 깨진 좌표를 다시 잡을
+    // 방법이 없어짐(지도에는 핀이 안 보이는데 재계산도 안 되는 상태로 남음).
+    // 유효하지 않으면 coord를 비워둬서 '필지 좌표확인'이 정상적으로 다시 계산하게 함.
+    const validCoord = parseImportedCoord(c.lat, c.lng);
+
     const parcel = {
       id, addr: addrText, bon, bu, code:'', jibun, sortKey,
       villageKey: targetKey, villageName: this.villages[targetKey].name, sigunguKey: parsed.sigunguKey,
-      extra: {}, coord: {lat:c.lat, lng:c.lng, source:'search'}, done:false
+      extra: {}, coord: validCoord ? {lat:validCoord.lat, lng:validCoord.lng, source:'search'} : null, done:false
     };
     this.villages[targetKey].parcels.push(parcel);
     this.parcels.push(parcel);
@@ -2613,6 +2635,10 @@ const App = {
     this.renderRoute();
     if(this._currentScreen==='map') this.renderMapMarkers(false);
     this.persistSession();
+
+    if(!validCoord){
+      alert(`"${addrText}" 필지는 추가했지만 검색 결과 좌표가 정상이 아니었어요.\n계산 화면의 "필지 좌표확인"으로 다시 시도해주세요.`);
+    }
 
     // 새로 추가된 행을 화면에 스크롤하고 기존 row-flash 애니메이션으로 강조.
     setTimeout(()=>{
@@ -4347,8 +4373,8 @@ const App = {
           bumpKakaoQuota(idx);
           bumpSharedKakaoQuota(idx);
           this.renderKakaoQuota();
-          this.parcelCoordCache[norm] = {lat:r.lat, lng:r.lng};
-          return {ok:true, lat:r.lat, lng:r.lng};
+          this.parcelCoordCache[norm] = {lat:r.lat, lng:r.lng, addr:r.addr};
+          return {ok:true, lat:r.lat, lng:r.lng, addr:r.addr};
         }
         if(r.error === 'no-match') return r;
         if(this.advanceKakaoKey()){ this.renderKakaoQuota(); continue; }
