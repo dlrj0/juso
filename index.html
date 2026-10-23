@@ -4535,21 +4535,27 @@ const App = {
             if(moved){
               // Polyline(캔버스/벡터 레이어)로 그리면 확대 애니메이션이 끝난 직후 사라지는 문제가
               // 있어서, 핀/라벨과 똑같은 방식(DOM CustomOverlay)의 작은 SVG로 점선을 그림.
+              // 점선이 잘 안 보이던 문제 개선: ① 흰 테두리(halo)를 먼저 깔고 그 위에 색선을 그려
+              // 지도 배경(도로/위성)과 구분되게 함 ② 굵기·불투명도를 올리고 점 대신 짧은 대시로 바꿈
+              // ③ SVG 안쪽 여백(pad)을 둬서, 완전히 가로/세로인 선이나 선 끝이 잘리던 문제 제거.
+              const leaderStrokeW = Math.max(1.5, +(2.4 * lineScale).toFixed(2));
+              const haloW = leaderStrokeW + Math.max(2, +(2.2 * lineScale).toFixed(2));
+              const leaderDash = `${(5*lineScale).toFixed(2)},${(3.5*lineScale).toFixed(2)}`;
+              const pad = Math.ceil(haloW / 2) + 2;
               const minX = Math.min(pinPoint.x, placement.x);
               const minY = Math.min(pinPoint.y, placement.y);
-              const lineW = Math.max(1, Math.abs(placement.x - pinPoint.x));
-              const lineH = Math.max(1, Math.abs(placement.y - pinPoint.y));
-              const x1 = pinPoint.x - minX, y1 = pinPoint.y - minY;
-              const x2 = placement.x - minX, y2 = placement.y - minY;
-              const originLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(minX, minY));
-              // 점선 굵기/간격도 lineScale에 비례(굵기만 키우면 실선처럼 보임)
-              const leaderStrokeW = Math.max(0.5, +(1.6 * lineScale).toFixed(2));
-              const leaderDash = `${(1*lineScale).toFixed(2)},${(3*lineScale).toFixed(2)}`;
+              const lineW = Math.abs(placement.x - pinPoint.x) + pad*2;
+              const lineH = Math.abs(placement.y - pinPoint.y) + pad*2;
+              const x1 = pinPoint.x - minX + pad, y1 = pinPoint.y - minY + pad;
+              const x2 = placement.x - minX + pad, y2 = placement.y - minY + pad;
+              const originLatLng = proj.coordsFromContainerPoint(new kakao.maps.Point(minX - pad, minY - pad));
               list.push(new kakao.maps.CustomOverlay({
                 position: originLatLng, xAnchor: 0, yAnchor: 0, zIndex: 3,
-                content: `<svg width="${lineW}" height="${lineH}" style="pointer-events:none;display:block;">
+                content: `<svg width="${lineW}" height="${lineH}" style="pointer-events:none;display:block;overflow:visible;">
+                  <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#fff" stroke-width="${haloW}"
+                    stroke-linecap="round" stroke-opacity="0.9"/>
                   <line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${color}" stroke-width="${leaderStrokeW}"
-                    stroke-dasharray="${leaderDash}" stroke-linecap="round" stroke-opacity="0.85"/>
+                    stroke-dasharray="${leaderDash}" stroke-linecap="butt" stroke-opacity="1"/>
                 </svg>`
               }));
             }
