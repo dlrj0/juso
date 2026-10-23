@@ -224,7 +224,38 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
      그 위(앞)에 뜨도록 확실히 쌓임 순서를 분리함. position을 명시해야 지도 SDK가
      내부적으로 넣는 저작권 표시 등도 이 컨테이너 기준으로만 쌓여서, 고정 버튼의
      z-index를 벗어나 앞으로 튀어나오지 않음. */
-  #kakaoMapContainer{position:relative;z-index:1;}
+  /* 지도 프레임 = 윈도우 창 같은 "테두리". 사방 가장자리(상/하/좌/우)와 네 모서리(대각선)를
+     끌어서 크기를 바꿈. 폭은 항상 페이지 가운데 기준으로 양쪽이 똑같이 늘고 줄도록 JS가
+     width / margin-left(calc(50% - 폭/2))를 지정함. */
+  #mapFrame{
+    position:relative;display:block;box-sizing:border-box;margin-top:8px;padding:10px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:14px;
+  }
+  #kakaoMapContainer{position:relative;z-index:1;margin-top:0 !important;border-radius:8px !important;}
+  .mrh{position:absolute;z-index:3;touch-action:none;user-select:none;-webkit-user-select:none;border-radius:6px;transition:background .12s;}
+  .mrh:hover{background:rgba(60,90,64,.16);}
+  .mrh.dragging{background:rgba(60,90,64,.30);}
+  .mrh-n{top:0;left:20px;right:20px;height:10px;cursor:ns-resize;}
+  .mrh-s{bottom:0;left:20px;right:20px;height:10px;cursor:ns-resize;}
+  .mrh-w{left:0;top:20px;bottom:20px;width:10px;cursor:ew-resize;}
+  .mrh-e{right:0;top:20px;bottom:20px;width:10px;cursor:ew-resize;}
+  .mrh-nw{top:0;left:0;width:20px;height:20px;cursor:nwse-resize;}
+  .mrh-se{bottom:0;right:0;width:20px;height:20px;cursor:nwse-resize;}
+  .mrh-ne{top:0;right:0;width:20px;height:20px;cursor:nesw-resize;}
+  .mrh-sw{bottom:0;left:0;width:20px;height:20px;cursor:nesw-resize;}
+  /* 손잡이 모양(작은 알약/점) */
+  .mrh::after{content:"";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:#b9b6aa;border-radius:3px;}
+  .mrh-n::after,.mrh-s::after{width:36px;height:3px;}
+  .mrh-w::after,.mrh-e::after{width:3px;height:36px;}
+  .mrh-nw::after,.mrh-ne::after,.mrh-sw::after,.mrh-se::after{width:6px;height:6px;border-radius:50%;}
+  .mrh:hover::after,.mrh.dragging::after{background:var(--accent);}
+  /* 지도 캡처 중에는 지도 위/주변에 얹힐 수 있는 UI(상단바, 토스트, 선택 목록, 크기조절 테두리)와
+     마우스 커서를 모두 숨겨서 사진에 지도만 찍히게 함 */
+  body.map-capturing, body.map-capturing *{cursor:none !important;}
+  body.map-capturing .topbar{visibility:hidden !important;}
+  body.map-capturing .resume-toast,
+  body.map-capturing #mapScaleTargetPicker,
+  body.map-capturing .mrh{display:none !important;}
   /* 높이는 자바스크립트(App.applyMapFocusHeight)가 뷰포트 끝까지 정확히 채우도록
      계산해서 인라인 style로 지정함 — 아래 90vh는 그 계산이 실패했을 때의 대비값. */
   #screen-map.map-focus #kakaoMapContainer{height:90vh;min-height:420px;}
@@ -478,6 +509,8 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <p>소재지(주소) 컬럼이 있는 엑셀이라면 무엇이든 올려보세요.<br>주소를 마을 단위로 자동 정리하고 방문 순서까지 계산해드려요.</p>
       <label class="filebtn">파일 선택<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;"></label>
     </div>
+    <button type="button" class="ghost-btn" id="startEmptyBtn" onclick="App.startEmpty()" style="margin-top:12px;">📋 파일 없이 바로 계산 화면으로</button>
+    <p class="hint" style="margin:6px 2px 0;text-align:center;">계산/지도 화면 아래 검색창에서 필지를 하나씩 추가할 수 있어요.</p>
     <div class="card" id="manualAddCard">
       <h3 style="font-size:15px;margin-bottom:4px;">필지 직접 추가</h3>
       <p class="hint" style="margin-top:0;">몇 개 필지만 조사할 때는 엑셀 없이 여기서 바로 추가해서 시작할 수 있어요.</p>
@@ -535,7 +568,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 
   <!-- SCREEN 4: ROUTE -->
   <div id="screen-route" class="hidden">
-    <span class="backlink" onclick="App.goScreen('select')">← 마을 다시 선택</span>
+    <span class="backlink" id="routeBackLink" onclick="App.backFromRoute()">← 마을 다시 선택</span>
 
     <div class="next-card" id="nextCard"></div>
 
@@ -651,7 +684,13 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요. 토글을 바꿔도 지도 확대/이동 상태는 그대로 유지되고, "전체보기"를 누르면 그때만 화면에 맞춰 다시 맞춰져요.</p>
     </div>
 
-    <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
+    <div id="mapFrame" title="테두리(상·하·좌·우·모서리)를 끌어 지도 크기를 바꿔요 — 폭은 항상 가운데 기준. 두 번 탭하면 기본 크기">
+      <div class="mrh mrh-n" data-dir="n"></div><div class="mrh mrh-s" data-dir="s"></div>
+      <div class="mrh mrh-w" data-dir="w"></div><div class="mrh mrh-e" data-dir="e"></div>
+      <div class="mrh mrh-nw" data-dir="nw"></div><div class="mrh mrh-ne" data-dir="ne"></div>
+      <div class="mrh mrh-sw" data-dir="sw"></div><div class="mrh mrh-se" data-dir="se"></div>
+      <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
+    </div>
     <p class="hint" id="mapFocusHint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
   </div>
 
@@ -1034,6 +1073,10 @@ let _kakaoLastBounds = null;        // renderMapMarkers()가 마지막으로 계
 // 이 플래그가 켜져 있는 동안엔 forceMapRedraw()가 절대 setBounds로 시야를 되돌리지
 // 않고 지금 보고 있는 중심/줌 그대로 유지함.
 let _kakaoCaptureInProgress = false;
+// 사용자가 지도 아래 테두리를 끌어 크기를 바꾸는 동안(그리고 직후 잠깐) true. 이때 발생하는
+// 컨테이너 리사이즈로 forceMapRedraw()가 시야를 "전체보기 범위"로 되돌리지 않고, 보고 있던
+// 중심/확대 상태를 그대로 유지하게 함.
+let _kakaoUserResizing = false;
 let _kakaoRelayoutTimers = [];      // robustMapRelayout()이 예약한 setTimeout id들(화면 이탈 시 취소용)
 let _kakaoRelayoutRafIds = [];      // 위와 동일 목적의 requestAnimationFrame id들
 // 지번 겹침 방지 배치(디클러터)를 켤 기준. 화면 1픽셀이 실제로 몇 미터에 해당하는지를
@@ -1041,7 +1084,10 @@ let _kakaoRelayoutRafIds = [];      // 위와 동일 목적의 requestAnimationF
 // 매번 정확히 계산). 카카오 지도 좌하단 축척 눈금이 정확히 "50m"로 바뀌는 순간과 100%
 // 똑같이 맞추긴 어렵지만(그 계산식은 카카오가 공개하지 않음), 체감상 비슷한 확대 수준에서
 // 켜지도록 값을 잡아뒀음. 너무 일찍/늦게 켜진다 싶으면 이 숫자만 조절하면 됨.
-const MAP_DECLUTTER_METERS_PER_PIXEL = 0.55;
+// [완화] 카카오맵은 줌 레벨이 1단계 바뀔 때마다 픽셀당 거리가 2배가 되므로, 예전 값(0.55)에서
+// 2단계 덜 확대해도 겹침 방지가 켜지도록 4배(0.55 × 2 × 2 = 2.2)로 늘림. 더 일찍/늦게 켜고
+// 싶으면 이 숫자만 조절하면 됨(1단계 = 2배: 1.1 / 2.2 / 4.4 ...).
+const MAP_DECLUTTER_METERS_PER_PIXEL = 2.2;
 let _kakaoRoutePolyline = null;
 let _kakaoNavRoutePolylines = [];     // 실선/점선 구간별 폴리라인(본선) 배열
 let _kakaoNavRouteHaloPolylines = [];  // 위 폴리라인들의 흰 테두리(halo) 배열
@@ -1841,6 +1887,7 @@ const App = {
     Object.values(villages).forEach(v=> v.parcels.sort((a,b)=>a.sortKey-b.sortKey) );
     this.parcels = parcels;
     this.villages = villages;
+    this._startedEmpty = false;
   },
 
   renderManualAddCard(){
@@ -1966,9 +2013,39 @@ const App = {
     Object.values(villages).forEach(v=> v.parcels.sort((a,b)=>a.sortKey-b.sortKey) );
     this.parcels = parcels;
     this.villages = villages;
+    this._startedEmpty = false;
     const extraKeys = {};
     this.manualExtraFields.forEach(f=>{ extraKeys[f] = true; });
     this.colMap = {addr:'manual', bon:'manual', bu:'manual', code:null, done:null, extra:extraKeys};
+  },
+  // 엑셀/직접입력 없이 빈 상태로 계산 화면에 바로 진입. 계산·지도 화면의 "주소 검색으로
+  // 필지 추가"로 필지를 채워 쓰면 됨. 이미 작업 중인 내용이 있으면 지우지 않고 이어서 진입.
+  startEmpty(){
+    if(this.parcels && this.parcels.length>0){
+      if(this.villageOrder && this.villageOrder.length>0){
+        this.renderRoute();
+        this.goScreen('route');
+      } else {
+        this.renderVillageList();
+        this.goScreen('select');
+      }
+      return;
+    }
+    this.parcels = [];
+    this.villages = {};
+    this.villageOrder = [];
+    this.routeMode = 'village';
+    this.flatOrder = [];
+    this.fileName = '';
+    this.colMap = {addr:null, bon:null, bu:null, code:null, done:null, lat:null, lng:null, villageLat:null, villageLng:null, extra:{}};
+    this._startedEmpty = true;
+    this.renderRoute();
+    this.goScreen('route');
+    // 바로 검색해서 추가할 수 있게 하단 고정바를 "필지 추가 검색" 모드로 열어둠
+    if(!this._stickyAddMode) this.toggleStickyAddMode();
+  },
+  backFromRoute(){
+    this.goScreen(this._startedEmpty ? 'upload' : 'select');
   },
   startFromManual(){
     if(this.manualParcels.length===0){ alert('추가된 필지가 없어요.'); return; }
@@ -1985,6 +2062,8 @@ const App = {
     const badges = {upload:'업로드', sheetpick:'시트 선택', mapping:'컬럼 확인', select:'마을 선택', route:'동선', map:'지도'};
     document.getElementById('stepBadge').textContent = badges[name];
     this._currentScreen = name;
+    const routeBack = document.getElementById('routeBackLink');
+    if(routeBack) routeBack.textContent = this._startedEmpty ? '← 처음 화면으로' : '← 마을 다시 선택';
     const hasSticky = (name==='route' || name==='map');
     document.getElementById('stickyBottom').style.display = hasSticky ? 'flex' : 'none';
     const fab = document.getElementById('fabStack');
@@ -2212,6 +2291,8 @@ const App = {
         <div class="eyebrow">다음 조사지 · ${next.village.name}</div>
         <div class="addr">${next.parcel.addr}</div>
         <div class="jibun">${next.parcel.jibun ? '지번 '+next.parcel.jibun : ''}</div>`;
+    } else if(total===0){
+      nextCard.innerHTML = `<div class="eyebrow">시작하기</div><div class="addr">아직 필지가 없어요</div><div class="jibun">하단 검색창에서 주소로 필지를 추가해보세요</div>`;
     } else {
       nextCard.innerHTML = `<div class="eyebrow">진행상황</div><div class="done-all">✓ 선택한 필지를 모두 조사했어요</div>`;
     }
@@ -2245,6 +2326,10 @@ const App = {
       return;
     }
 
+    if(this.villageOrder.length===0){
+      list.innerHTML = `<div class="empty-note">아직 추가된 필지가 없어요.<br>하단의 🔍 주소 검색창에서 필지를 검색해 추가해보세요.<br>(지도 화면에서도 같은 방식으로 추가할 수 있어요)</div>`;
+      return;
+    }
     list.innerHTML = this.viewSwitchHtml() + this.villageOrder.map((key, i)=>{
       const v = this.villages[key];
       const activeParcels = v.parcels.filter(p=>!this.isParcelDeleted(p));
@@ -2797,6 +2882,7 @@ const App = {
 
   openMapScreen(){
     this.goScreen('map');
+    this.initMapResizeHandle();
     if(!this._mapLayerDefaultsSet){
       const hasFlatOrder = this.routeMode==='flat' && this.flatOrder && this.flatOrder.length>0;
       document.getElementById('mapShowVillages').checked = !hasFlatOrder;
@@ -2887,7 +2973,7 @@ const App = {
     // [버그 수정] 화면 캡처가 진행 중일 땐 컨테이너 크기가 실제로 바뀌었더라도
     // _kakaoLastBounds로 시야를 되돌리지 않음(사용자가 확대해둔 상태를 그대로 캡처해야
     // 하므로). 이때도 redraw 자체는 필요하므로 현재 중심/줌을 유지한 채로만 강제 갱신.
-    if(_kakaoCaptureInProgress){
+    if(_kakaoCaptureInProgress || _kakaoUserResizing){
       // [버그 수정] 아래 "줌 한 단계 올렸다 내리기" 트릭은 relayout 이벤트만으론 안
       // 잡히는 내부 갱신을 강제하려는 용도인데, 항공사진(위성) 모드에서는 이 트릭이
       // 줌이 바뀔 때마다 위성 타일을 새로 불러오면서 잠깐 하얗게 덮이는 깜빡임을
@@ -3153,6 +3239,8 @@ const App = {
     const stickyBottom = document.getElementById('stickyBottom');
     const captureHideEls = [fabStack, stickyBottom].filter(Boolean);
     if(btn){ btn.disabled = true; btn.style.opacity = '0.5'; }
+    // 캡처 중 지도 위에 얹힐 수 있는 UI(상단바/토스트/선택 목록/테두리)와 마우스 커서 숨김
+    document.body.classList.add('map-capturing');
 
     // [버그 수정] _kakaoCaptureInProgress로 "확대/축소 흔들기" 트릭은 막아뒀지만, 그와
     // 별개로 "화면 공유 중" 표시줄이 뜨면서 브라우저 뷰포트 높이 자체가 줄어들어 vh
@@ -3177,7 +3265,7 @@ const App = {
       // preferCurrentTab/selfBrowserSurface: 크롬 계열에서 지원하면 "현재 탭"을
       // 바로 고르도록 유도해줌(미지원 브라우저에선 무시되고 기본 선택 화면이 뜸).
       stream = await navigator.mediaDevices.getDisplayMedia({
-        video: { displaySurface: 'browser' },
+        video: { displaySurface: 'browser', cursor: 'never' }, // 마우스 커서는 사진에 넣지 않음
         preferCurrentTab: true,
         selfBrowserSurface: 'include',
         audio: false
@@ -3206,26 +3294,69 @@ const App = {
       // captureHideEls 배열로 묶어 항상 함께 숨기고 함께 복구함.
       // 혹시라도 아이콘이 안 사라진 채로 남는 극단적 상황을 대비해, 사용자가 화면을
       // 만지거나 마우스를 움직이면 즉시 복구되는 안전장치도 같이 걸어둠.
+      { // 지도가 화면 밖으로 잘려 있으면 보이는 위치로 먼저 스크롤
+        const r0 = container.getBoundingClientRect();
+        if(r0.top < 0 || r0.bottom > window.innerHeight){ window.scrollBy(0, r0.top - 8); await delay(150); }
+      }
       captureHideEls.forEach(el=>el.classList.add('capture-hiding'));
       uninstallSafetyNet = this._armCaptureHideSafetyNet(captureHideEls);
       await this._waitUntilCaptureHiddenReflected(video);
 
+      // [개선] 예전엔 "탭 전체 영상에서 지도 영역을 비율로 잘라내는" 방식만 썼는데, 사용자가
+      // 공유 창에서 탭 대신 "창"이나 "전체 화면"을 고르면 브라우저 주소창/탭/작업표시줄이
+      // 같이 찍혔고, 지도 위에 겹쳐 떠 있던 UI(상단바 등)도 그대로 찍혔음.
+      // → 1순위: 브라우저가 지원하면 Element Capture(restrictTo) / Region Capture(cropTo)로
+      //   "지도 요소만" 캡처 스트림 자체를 한정함(다른 UI는 애초에 영상에 들어오지 않음).
+      // → 2순위(미지원 브라우저): 예전처럼 잘라내되, 현재 탭이 아닌 걸 골랐으면 잘못 찍히지
+      //   않도록 안내 후 중단함.
+      const track = stream.getVideoTracks()[0];
       const rect = container.getBoundingClientRect();
-      const vw = video.videoWidth, vh = video.videoHeight;
-      // 캡처된 영상 해상도 대비 실제 브라우저 뷰포트 크기의 비율로 좌표를 환산.
-      // (창 전체가 아니라 "탭"을 캡처했을 때만 이 비율이 뷰포트와 정확히 맞음)
-      const sx = vw / window.innerWidth;
-      const sy = vh / window.innerHeight;
-      const cropX = Math.max(0, Math.round(rect.left * sx));
-      const cropY = Math.max(0, Math.round(rect.top * sy));
-      const cropW = Math.max(1, Math.round(rect.width * sx));
-      const cropH = Math.max(1, Math.round(rect.height * sy));
+      const aspectOK = ()=>{
+        const va = video.videoWidth / video.videoHeight, ra = rect.width / rect.height;
+        return isFinite(va) && Math.abs(va - ra) / ra < 0.03;
+      };
+      let elementOnly = false;
+      try{
+        if(window.RestrictionTarget && track && typeof track.restrictTo === 'function'){
+          const rt = await RestrictionTarget.fromElement(container);
+          await track.restrictTo(rt);
+          elementOnly = true;
+        } else if(window.CropTarget && track && typeof track.cropTo === 'function'){
+          const ct = await CropTarget.fromElement(container);
+          await track.cropTo(ct);
+          elementOnly = true;
+        }
+      }catch(e){ elementOnly = false; }
+      if(elementOnly){
+        // 한정이 적용돼 영상 크기가 지도 크기로 바뀔 때까지 잠깐 기다림
+        await this._waitUntilCaptureHiddenReflected(video);
+        for(let i=0; i<12 && !aspectOK(); i++) await delay(100);
+        if(!aspectOK()) elementOnly = false;
+      }
 
       const canvas = document.createElement('canvas');
-      canvas.width = cropW;
-      canvas.height = cropH;
       const ctx = canvas.getContext('2d');
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      if(elementOnly){
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      } else {
+        const surface = (track && track.getSettings && track.getSettings().displaySurface) || '';
+        const vw = video.videoWidth, vh = video.videoHeight;
+        const sx = vw / window.innerWidth;
+        const sy = vh / window.innerHeight;
+        // 현재 탭이 아닌 "창/전체 화면"이 선택됐으면 비율이 어긋나 브라우저 UI가 같이 찍힘
+        if((surface && surface !== 'browser') || Math.abs(sx - sy) / sy > 0.03){
+          throw new Error('공유 창에서 \"이 탭(현재 탭)\"을 선택해주세요. 창이나 전체 화면을 고르면 브라우저 화면이 같이 찍혀요.');
+        }
+        const cropX = Math.max(0, Math.round(rect.left * sx));
+        const cropY = Math.max(0, Math.round(rect.top * sy));
+        const cropW = Math.max(1, Math.min(Math.round(rect.width * sx), vw - cropX));
+        const cropH = Math.max(1, Math.min(Math.round(rect.height * sy), vh - cropY));
+        canvas.width = cropW;
+        canvas.height = cropH;
+        ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, cropW, cropH);
+      }
 
       // [버그 수정] "캡처 완료"를 인식한 바로 이 시점에 복구함. drawImage는 동기
       // 호출이라 이 줄에 도달했다는 것 자체가 캔버스에 이미 다 그려졌다는 뜻이므로,
@@ -3257,6 +3388,7 @@ const App = {
       }
     }finally{
       captureHideEls.forEach(el=>el.classList.remove('capture-hiding'));
+      document.body.classList.remove('map-capturing');
       uninstallSafetyNet();
       if(stream) stream.getTracks().forEach(t=>t.stop());
       if(video){ video.srcObject = null; video.remove(); }
@@ -3273,6 +3405,8 @@ const App = {
   // (전체화면 API는 안 쓰고, 부가 컨트롤을 숨기고 지도를 화면 아래 끝까지 늘림)
   toggleMapFocus(){
     this._mapFocusMode = !this._mapFocusMode;
+    this._mapUserWidth = null;
+    this._mapUserHeight = null; // 일반/크게 보기 전환은 항상 "기본 크기"로 — 직접 조절한 높이는 초기화
     const screen = document.getElementById('screen-map');
     if(screen) screen.classList.toggle('map-focus', this._mapFocusMode);
     document.body.classList.toggle('map-focus-mode', this._mapFocusMode);
@@ -3300,14 +3434,137 @@ const App = {
   applyMapFocusHeight(){
     const container = document.getElementById('kakaoMapContainer');
     if(!container) return;
-    if(!this._mapFocusMode){
-      container.style.height = '';
+    this.applyMapWidth();
+    // 사용자가 아래 테두리로 직접 맞춘 높이가 있으면 그게 최우선
+    if(this._mapUserHeight){
+      container.style.height = this._mapUserHeight + 'px';
+      container.style.minHeight = '160px';
       return;
     }
+    if(!this._mapFocusMode){
+      // [수정] 예전엔 ''로 비워서 HTML에 적어둔 기본 높이(62vh)까지 같이 지워졌음 —
+      // 일반 크기로 돌아올 땐 기본값을 명시적으로 다시 지정.
+      container.style.height = '62vh';
+      container.style.minHeight = '320px';
+      return;
+    }
+    container.style.minHeight = '320px';
     const top = container.getBoundingClientRect().top;
-    const bottomGap = 14; // 화면 맨 끝에 딱 붙지 않게 여백만 살짝
-    const h = Math.max(320, Math.round(window.innerHeight - top - bottomGap));
+    const handleH = 10;   // 아래 크기조절 테두리(프레임 패딩)가 화면 안에 보이도록 그만큼 비워둠
+    const sticky = document.getElementById('stickyBottom');
+    const stickyH = (sticky && sticky.style.display !== 'none') ? sticky.offsetHeight : 0;
+    const bottomGap = 6;
+    const h = Math.max(320, Math.round(window.innerHeight - top - handleH - stickyH - bottomGap));
     container.style.height = h + 'px';
+  },
+
+  // ---- 지도 크기 직접 조절(아래 테두리 드래그) ----
+  _mapUserWidth: null,  // null이면 기본 폭(화면 폭에 맞춤). 값이 있으면 항상 가운데 정렬로 이 폭 적용
+  // 폭은 프레임에 지정하고, 좌측 여백을 calc(50% - 폭/2)로 줘서 "부모(=가운데 정렬된 본문)의
+  // 정중앙"에 오게 함. 본문 최대폭(640px)보다 넓게 키워도 한쪽으로 치우치지 않고 양쪽으로 똑같이
+  // 늘어남(부모 폭보다 커지면 음수 여백이 되어 좌우로 균등하게 삐져나옴).
+  applyMapWidth(){
+    const frame = document.getElementById('mapFrame');
+    if(!frame) return;
+    if(!this._mapUserWidth){
+      frame.style.width = ''; frame.style.marginLeft = ''; frame.style.marginRight = '';
+      return;
+    }
+    const vw = document.documentElement.clientWidth;
+    const w = Math.max(260, Math.min(this._mapUserWidth, vw - 8));
+    frame.style.width = w + 'px';
+    frame.style.marginLeft = `calc(50% - ${w/2}px)`;
+    frame.style.marginRight = '0';
+  },
+  _mapUserHeight: null, // null이면 기본 크기(일반 62vh / 크게 보기는 화면 끝까지)
+  initMapResizeHandle(){
+    if(this._mapResizeBound) return;
+    const frame = document.getElementById('mapFrame');
+    const container = document.getElementById('kakaoMapContainer');
+    if(!frame || !container) return;
+    this._mapResizeBound = true;
+    window.addEventListener('resize', ()=>{ if(this._mapUserWidth) this.applyMapWidth(); });
+    const MIN_W = 260, MIN_H = 160;
+    const clamp = (v, lo, hi)=> Math.min(hi, Math.max(lo, v));
+    let st = null, lastTapAt = 0;
+
+    const setHeight = (nh)=>{
+      this._mapUserHeight = nh;
+      container.style.height = nh + 'px';
+      container.style.minHeight = MIN_H + 'px';
+    };
+
+    frame.querySelectorAll('.mrh').forEach(h=>{
+      const dir = h.getAttribute('data-dir');
+      h.addEventListener('pointerdown', (e)=>{
+        if(e.pointerType==='mouse' && e.button!==0) return;
+        const fr = frame.getBoundingClientRect();
+        st = {
+          h, x:e.clientX, y:e.clientY, moved:0,
+          w: fr.width, ch: container.getBoundingClientRect().height, bottomV: fr.bottom,
+          east: dir.includes('e'), west: dir.includes('w'),
+          north: dir.includes('n'), south: dir.includes('s')
+        };
+        _kakaoUserResizing = true;
+        clearTimeout(this._userResizeTimer);
+        try{ h.setPointerCapture(e.pointerId); }catch(_){}
+        h.classList.add('dragging');
+        document.body.style.cursor = getComputedStyle(h).cursor;
+        e.preventDefault();
+      });
+      h.addEventListener('pointermove', (e)=>{
+        if(!st || st.h!==h) return;
+        e.preventDefault();
+        const dx = e.clientX - st.x, dy = e.clientY - st.y;
+        st.moved = Math.max(st.moved, Math.abs(dx), Math.abs(dy));
+        // 가로(좌/우/대각선): 항상 가운데 정렬을 유지하며 양쪽이 똑같이 늘고 줄도록 이동량의 2배를 폭에
+        // 반영 — 그래서 잡고 있는 테두리가 손가락/마우스를 정확히 따라감.
+        if(st.east || st.west){
+          const vw = document.documentElement.clientWidth;
+          const sign = st.east ? 1 : -1;
+          this._mapUserWidth = Math.round(clamp(st.w + 2*sign*dx, MIN_W, vw - 8));
+          this.applyMapWidth();
+        }
+        // 세로: 아래 테두리는 높이만 늘림. 위 테두리는 페이지가 위에서부터 흐르는 구조라 높이를
+        // 늘린 만큼 스크롤을 보정해서, 아래쪽은 제자리에 두고 위쪽 테두리가 손을 따라 움직이게 함.
+        const maxH = Math.max(500, Math.round(window.innerHeight * 1.6));
+        if(st.south){
+          setHeight(Math.round(clamp(st.ch + dy, MIN_H, maxH)));
+        } else if(st.north){
+          setHeight(Math.round(clamp(st.ch - dy, MIN_H, maxH)));
+          const diff = frame.getBoundingClientRect().bottom - st.bottomV;
+          if(Math.abs(diff) > 0.5) window.scrollBy(0, diff);
+        }
+      });
+      const end = (e)=>{
+        if(!st || st.h!==h) return;
+        const moved = st.moved;
+        st = null;
+        h.classList.remove('dragging');
+        document.body.style.cursor = '';
+        try{ h.releasePointerCapture(e.pointerId); }catch(_){}
+        // 거의 안 움직였으면 "탭"으로 보고, 짧은 간격으로 두 번 탭하면 기본 크기로 복귀
+        if(moved < 6){
+          const now = Date.now();
+          if(now - lastTapAt < 380){
+            lastTapAt = 0; this._mapUserHeight = null; this._mapUserWidth = null; this.applyMapFocusHeight();
+          } else lastTapAt = now;
+        }
+        // ResizeObserver 콜백은 비동기라 조금 늦게 들어오므로 플래그를 잠깐 더 유지한 뒤 끔
+        clearTimeout(this._userResizeTimer);
+        this._userResizeTimer = setTimeout(()=>{
+          _kakaoUserResizing = false;
+          // forceMapRedraw()는 시야를 "전체보기 범위"로 되돌리므로 쓰지 않고, 보던 중심/확대는
+          // 그대로 둔 채 지도만 새 크기에 맞춰 다시 그리고 라벨 배치만 다시 계산함.
+          if(_kakaoMap){
+            kakao.maps.event.trigger(_kakaoMap, 'relayout');
+            this.renderMapMarkers(false);
+          }
+        }, 350);
+      };
+      h.addEventListener('pointerup', end);
+      h.addEventListener('pointercancel', end);
+    });
   },
 
   toggleVillageMapVisibility(key){
@@ -3996,9 +4253,9 @@ const App = {
         // 실제 보이는 점(dotSize)만 그 안에서 작게 그림 — 터치 편의성은 그대로 유지.
         const badgeSize = Math.round(24 * pinScale);
         const dotSize = Math.max(7, Math.round(badgeSize * 0.42));
-        const jibunFont = Math.max(8, Math.round(11 * labelScale));
-        const jibunPadV = Math.max(0, Math.round(1 * labelScale));
-        const jibunPadH = Math.max(3, Math.round(6 * labelScale));
+        const jibunFont = Math.max(9, Math.round(13 * labelScale)); // 기본 11→13px로 키움(겹침 방지가 일찍 켜져서 여유가 생김)
+        const jibunPadV = Math.max(0, Math.round(2 * labelScale));
+        const jibunPadH = Math.max(3, Math.round(7 * labelScale));
         const hasJibun = !!(p.jibun && showJibun);
         const pinContent = `<div onclick="App.showParcelPin(${i})" data-parcel-idx="${i}" title="${p.addr.replace(/"/g,'&quot;')}"
             style="width:${badgeSize}px;height:${badgeSize}px;display:flex;align-items:center;justify-content:center;
