@@ -402,6 +402,20 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-select-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;}
   #navSelectModeBtn.active{background:#ff5a3c;border-color:#ff5a3c;color:#fff;}
   .nav-select-panel{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);}
+  /* 길찾기 구간 범례(패널 안) */
+  .nav-leg-list{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
+  .nav-leg-list:empty{display:none;}
+  .nav-leg-item{display:flex;align-items:center;gap:8px;font-size:12.5px;}
+  .nav-leg-swatch{width:28px;height:6px;border-radius:3px;flex-shrink:0;box-shadow:0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.12);}
+  .nav-leg-km{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--text-mute);}
+  .nav-leg-hint{font-size:11px;color:var(--text-mute);margin-top:2px;}
+  /* 길찾기 구간 범례(지도 안 — 캡처 사진에도 같이 찍힘) */
+  .nav-map-legend{position:absolute;top:8px;left:8px;z-index:50;max-width:72%;pointer-events:none;
+    background:rgba(255,255,255,.94);border-radius:8px;padding:5px 9px;box-shadow:0 1px 4px rgba(0,0,0,.28);
+    font-size:11.5px;line-height:1.55;color:#222;}
+  .nav-map-legend .nml-row{display:flex;align-items:center;gap:6px;white-space:nowrap;}
+  .nav-map-legend .nml-sw{width:18px;height:5px;border-radius:3px;flex-shrink:0;}
+  .nav-map-legend .nml-more{color:#666;font-size:10.5px;}
   .nav-select-chips{display:flex;flex-wrap:wrap;gap:6px;}
   .nav-select-chips .ns-chip{
     display:flex;align-items:center;gap:5px;background:#fff;border:1.5px solid #ff5a3c;
@@ -673,6 +687,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
           <button onclick="App.clearNavSelection()">선택 지우기</button>
         </div>
         <div id="navRouteStatus" class="gps-status" style="margin-top:6px;"></div>
+        <div id="navRouteLegend" class="nav-leg-list"></div>
       </div>
 
       <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
@@ -876,6 +891,39 @@ function parseAddress(addr){
   const villageKey = [r.lvl1,r.lvl2,r.lvl3,r.lvl4].filter(Boolean).join('|') || 'UNK';
   const sigunguKey = [r.lvl1,r.lvl2].filter(Boolean).join(' ') || '기타';
   return {...r, villageName, villageKey, sigunguKey};
+}
+// 폴리라인을 진행 방향 "오른쪽"으로 dMeters만큼 평행 이동한 새 좌표열을 돌려줌(한국은 우측통행).
+// 같은 도로를 갔다가 돌아오면 두 선이 정확히 겹치는데, 이렇게 밀어주면 도로 위에 왕복 차선처럼
+// 나란히 그려져서 가는 길/오는 길이 한눈에 구분됨. pts: [[lat,lng],...], ref: {lat,lng} 기준점.
+function offsetPolylineRight(pts, dMeters, ref){
+  const kx = 111320 * Math.cos(ref.lat * Math.PI/180), ky = 110574;
+  const xy = [];
+  for(const q of pts){
+    const x = (q[1]-ref.lng)*kx, y = (q[0]-ref.lat)*ky;
+    const last = xy[xy.length-1];
+    if(last && Math.abs(last.x-x) < 0.05 && Math.abs(last.y-y) < 0.05) continue; // 5cm 이내 중복점 제거
+    xy.push({x, y});
+  }
+  if(xy.length < 2 || !dMeters) return pts.map(q=>[q[0], q[1]]);
+  const nrm = [];
+  for(let i=0; i<xy.length-1; i++){
+    const dx = xy[i+1].x-xy[i].x, dy = xy[i+1].y-xy[i].y, len = Math.hypot(dx, dy) || 1;
+    nrm.push({x: dy/len, y: -dx/len}); // 진행 방향의 오른쪽 법선
+  }
+  const out = [];
+  for(let i=0; i<xy.length; i++){
+    let nx, ny, scale = 1;
+    if(i === 0){ nx = nrm[0].x; ny = nrm[0].y; }
+    else if(i === xy.length-1){ nx = nrm[i-1].x; ny = nrm[i-1].y; }
+    else {
+      const a = nrm[i-1], b = nrm[i];
+      const sx = a.x+b.x, sy = a.y+b.y, sl = Math.hypot(sx, sy);
+      if(sl < 1e-3){ nx = a.x; ny = a.y; }               // 완전 U턴: 앞 구간 기준으로만 밀기
+      else { nx = sx/sl; ny = sy/sl; scale = 1/Math.max(nx*a.x + ny*a.y, 0.55); } // 모서리가 뾰족해지는 정도 제한
+    }
+    out.push([ref.lat + (xy[i].y + ny*dMeters*scale)/ky, ref.lng + (xy[i].x + nx*dMeters*scale)/kx]);
+  }
+  return out;
 }
 function bearingBetween(lat1,lng1,lat2,lng2){
   const toRad = d=>d*Math.PI/180, toDeg = r=>r*180/Math.PI;
@@ -1092,6 +1140,12 @@ let _kakaoRoutePolyline = null;
 let _kakaoNavRoutePolylines = [];     // 실선/점선 구간별 폴리라인(본선) 배열
 let _kakaoNavRouteHaloPolylines = [];  // 위 폴리라인들의 흰 테두리(halo) 배열
 let _kakaoNavRouteMarkers = [];
+let _kakaoNavRouteArrows = [];         // 진행 방향 화살표(지도가 멈출 때마다 현재 화면 범위에 맞춰 다시 배치)
+let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라인의 구간/꼭짓점 정보(차선 오프셋 재계산용)
+// 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
+const NAV_LEG_COLORS = ['#E5383B','#1D70F5','#FF8C00','#8E3FD1','#0FA37F','#D6336C','#6B8E00','#00A3D9','#8D5524','#2B2D42','#C9A000'];
+const NAV_LANE_OFFSET_PX = 4.5;   // 같은 길을 오가는 선이 겹치지 않도록, 진행 방향 오른쪽으로 밀어서 그리는 거리(화면 픽셀)
+const NAV_ARROW_SPACING_PX = 130; // 진행 방향 화살표 간격(화면 픽셀)
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
 
@@ -2929,6 +2983,8 @@ const App = {
         clearTimeout(this._zoomRerenderTimer);
         this._zoomRerenderTimer = setTimeout(()=>{ this.renderMapMarkers(false); }, 200);
       });
+      // 지도 이동/확대가 멈추면 길찾기 선의 차선 간격(화면 픽셀 기준)과 방향 화살표를 현재 화면에 맞게 다시 계산
+      kakao.maps.event.addListener(_kakaoMap, 'idle', ()=>{ this.refreshNavRouteGeometry(false); });
       this.bindMapPinLongPress(container);
     }
     // 맵을 방금 새로 만들었든(최초 진입) 이미 있던 걸 재사용하든, 화면이 hidden→visible로
@@ -3152,7 +3208,9 @@ const App = {
   // API를 지원하지 않는 브라우저(예: 파이어폭스)에서는 넉넉한 고정 지연(capMs)으로
   // 대체함. 어느 쪽이든 혹시 프레임 콜백이 하나도 안 불려도 무한 대기하지 않도록
   // capMs로 상한을 둠.
-  async _waitUntilCaptureHiddenReflected(video, frames=4, minMs=450, capMs=1200){
+  // [속도 개선] 이제 버튼은 권한창이 뜨기 "전에" 이미 숨겨둔 상태라, 스트림이 시작된 뒤에는
+  // 프레임이 2~3번 흐르는 것만 확인하면 충분함(예전엔 최소 450ms 바닥선 때문에 2번 기다렸음).
+  async _waitUntilCaptureHiddenReflected(video, frames=3, minMs=0, capMs=700){
     // 우리 페이지 자체의 레이아웃/페인트가 반영됐는지는 rAF 두 번으로 보장(브라우저가
     // 다음 두 번의 화면 갱신을 거치면 스타일 변경이 실제로 그려졌다고 볼 수 있음).
     await new Promise(res=>requestAnimationFrame(()=>requestAnimationFrame(res)));
@@ -3172,7 +3230,7 @@ const App = {
       // 프레임 조건과 최소 시간 조건을 둘 다 채워야 넘어감(더 오래 걸리는 쪽 기준).
       await Promise.all([framesPromise, delay(minMs)]);
     } else {
-      await delay(capMs);
+      await delay(300);
     }
   },
 
@@ -3243,8 +3301,9 @@ const App = {
     const stickyBottom = document.getElementById('stickyBottom');
     const captureHideEls = [fabStack, stickyBottom].filter(Boolean);
     if(btn){ btn.disabled = true; btn.style.opacity = '0.5'; }
-    // 캡처 중 지도 위에 얹힐 수 있는 UI(상단바/토스트/선택 목록/테두리)와 마우스 커서 숨김
-    document.body.classList.add('map-capturing');
+    // [버그 수정] 예전엔 여기서 바로 body.map-capturing(마우스 커서 숨김 포함)을 켜서, "이 탭을
+    // 보도록 허용" 권한창이 떠 있는 동안 커서가 사라져 팝업을 누르기 불편했음. 이제는 권한을
+    // 허용한 직후(스트림을 받은 뒤)에만 켬. 아래 getDisplayMedia 부분 참고.
 
     // [버그 수정] _kakaoCaptureInProgress로 "확대/축소 흔들기" 트릭은 막아뒀지만, 그와
     // 별개로 "화면 공유 중" 표시줄이 뜨면서 브라우저 뷰포트 높이 자체가 줄어들어 vh
@@ -3268,12 +3327,25 @@ const App = {
     try{
       // preferCurrentTab/selfBrowserSurface: 크롬 계열에서 지원하면 "현재 탭"을
       // 바로 고르도록 유도해줌(미지원 브라우저에선 무시되고 기본 선택 화면이 뜸).
+      // [속도 개선] 지도가 화면 밖으로 잘려 있으면 스크롤을 먼저 해두고, 우측 하단 버튼과 하단
+      // 고정 바도 권한창이 뜨기 "전에" 미리 숨김. 이러면 사용자가 권한을 누르는 동안 이미
+      // 화면이 정리돼 있어서, 스트림이 시작된 뒤 "버튼이 사라진 화면이 반영될 때까지" 따로
+      // 오래 기다릴 필요가 없어짐(캡처 체감 시간이 크게 줄어듦).
+      { const r0 = container.getBoundingClientRect();
+        if(r0.top < 0 || r0.bottom > window.innerHeight){ window.scrollBy(0, r0.top - 8); await delay(120); }
+      }
+      captureHideEls.forEach(el=>el.classList.add('capture-hiding'));
+
       stream = await navigator.mediaDevices.getDisplayMedia({
         video: { displaySurface: 'browser', cursor: 'never' }, // 마우스 커서는 사진에 넣지 않음
         preferCurrentTab: true,
         selfBrowserSurface: 'include',
         audio: false
       });
+      // 권한을 허용한 뒤에야 지도 위 UI(상단바/토스트/선택 목록/테두리)와 마우스 커서를 숨김
+      document.body.classList.add('map-capturing');
+      // 안전장치도 스트림을 받은 뒤부터 가동(권한창을 오래 보고 있는 동안 마우스를 움직여도 버튼이 복구되지 않게)
+      uninstallSafetyNet = this._armCaptureHideSafetyNet(captureHideEls);
 
       video = document.createElement('video');
       video.srcObject = stream;
@@ -3284,26 +3356,7 @@ const App = {
         if(video.readyState >= 2) return res();
         video.onloadedmetadata = ()=>res();
       });
-      // 트랙이 잡힌 직후 한두 프레임은 비어있을 수 있어 살짝 대기
-      await delay(120);
-
-      // 우측 하단 버튼들(캡처 버튼 포함)과 하단 고정 바(엑셀로 내보내기 등)가
-      // 사진에 찍히지 않도록 잠깐 완전히 숨김.
-      // [버그 수정] 예전엔 여기서 고정 200ms만 기다리고 바로 찍었는데, 그 시간 안에
-      // "버튼이 사라진 화면"이 캡처 스트림에 아직 반영 안 된 경우가 있어 가끔 버튼이
-      // 덜 사라진 채로 찍혔음. 지금은 _waitUntilCaptureHiddenReflected()로 실제
-      // 캡처 스트림 프레임이 몇 번 갱신될 때까지 확인한 뒤에만 찍음.
-      // [버그 수정] 예전엔 우측 하단 버튼(fab-stack)만 숨겼는데, 하단 고정 바
-      // (stickyBottom)는 숨김 대상에서 빠져 있어 항상 그대로 찍혔음. 이제 두 요소를
-      // captureHideEls 배열로 묶어 항상 함께 숨기고 함께 복구함.
-      // 혹시라도 아이콘이 안 사라진 채로 남는 극단적 상황을 대비해, 사용자가 화면을
-      // 만지거나 마우스를 움직이면 즉시 복구되는 안전장치도 같이 걸어둠.
-      { // 지도가 화면 밖으로 잘려 있으면 보이는 위치로 먼저 스크롤
-        const r0 = container.getBoundingClientRect();
-        if(r0.top < 0 || r0.bottom > window.innerHeight){ window.scrollBy(0, r0.top - 8); await delay(150); }
-      }
-      captureHideEls.forEach(el=>el.classList.add('capture-hiding'));
-      uninstallSafetyNet = this._armCaptureHideSafetyNet(captureHideEls);
+      // 버튼은 이미 숨겨져 있으므로, 프레임이 몇 번 흐르는 것만 확인하고 바로 진행
       await this._waitUntilCaptureHiddenReflected(video);
 
       // [개선] 예전엔 "탭 전체 영상에서 지도 영역을 비율로 잘라내는" 방식만 썼는데, 사용자가
@@ -3332,10 +3385,11 @@ const App = {
         }
       }catch(e){ elementOnly = false; }
       if(elementOnly){
-        // 한정이 적용돼 영상 크기가 지도 크기로 바뀔 때까지 잠깐 기다림
-        await this._waitUntilCaptureHiddenReflected(video);
-        for(let i=0; i<12 && !aspectOK(); i++) await delay(100);
+        // 한정이 적용돼 영상 크기가 지도 크기로 바뀔 때까지 짧게(40ms 간격) 확인한 뒤, 새 크기의
+        // 프레임이 2번 흐르면 바로 찍음(예전엔 최소 450ms + 최대 1.2초를 기다렸음).
+        for(let i=0; i<40 && !aspectOK(); i++) await delay(40);
         if(!aspectOK()) elementOnly = false;
+        else await this._waitUntilCaptureHiddenReflected(video, 2);
       }
 
       const canvas = document.createElement('canvas');
@@ -3731,6 +3785,33 @@ const App = {
         statusEl.textContent = '';
       }
     }
+    // 구간별 색 범례 — 출발→경유→도착 순서대로 어떤 색 선이 어느 구간인지
+    const legEl = document.getElementById('navRouteLegend');
+    if(legEl){
+      const R = this._lastNavRoute;
+      if(R && R.legMeta && R.legMeta.length){
+        legEl.innerHTML = R.legMeta.map((m,k)=>`
+          <div class="nav-leg-item">
+            <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
+            <span>${m.label}</span><span class="nav-leg-km">${m.km}km</span>
+          </div>`).join('') +
+          `<div class="nav-leg-hint">화살표(▲)는 가는 방향이에요. 같은 길을 오가는 구간은 오른쪽 차선으로 나란히 그려져요.</div>`;
+      } else {
+        legEl.innerHTML = '';
+      }
+    }
+  },
+
+  // 구간(leg)별 이름/거리 — 범례 표시용. 출발지와 도착지가 같은 위치의 왕복(핀 3개)이면 "가는 길/오는 길"로 표시.
+  buildNavLegMeta(points, legs){
+    const n = points.length;
+    const roleOf = (i)=> i===0 ? '출발' : (i===n-1 ? '도착' : `경유${i}`);
+    const roundTrip = n===3 && haversineMeters(points[0].lat, points[0].lng, points[n-1].lat, points[n-1].lng) < 50;
+    return legs.map((leg,k)=>{
+      const base = `${roleOf(k)}→${roleOf(k+1)}`;
+      const label = roundTrip ? `${k===0 ? '가는 길' : '오는 길'} (${base})` : base;
+      return {label, km: (leg.distM/1000).toFixed(1)};
+    });
   },
 
   // ---------- TMAP(티맵) 자동차 경로안내 API 호출 ----------
@@ -3758,7 +3839,8 @@ const App = {
     this._lastNavRoute = {
       distanceKm:r.distanceKm, durationMin:r.durationMin, hasWaypoints: pts.length>2,
       path: r.path,
-      segments: r.segments,
+      legs: r.legs,
+      legMeta: this.buildNavLegMeta(pts, r.legs),
       fallbackDescs: r.fallbackDescs || [],
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
@@ -3766,7 +3848,7 @@ const App = {
     const showBox = document.getElementById('mapShowNavRoute');
     if(showBox){ showBox.disabled = false; }
     if(!showBox || showBox.checked){
-      this.drawNavRoutePolyline(r.segments);
+      this.drawNavRoutePolyline(r.legs);
       this.renderNavRouteVisuals();
       const bounds = new kakao.maps.LatLngBounds();
       r.path.forEach(p=>bounds.extend(p));
@@ -3775,41 +3857,169 @@ const App = {
     this.renderNavSelectPanel();
   },
 
-  // 길찾기 도로 폴리라인을 흰 테두리(halo) + 본선 두 겹으로 그림.
-  // 유턴 등으로 선이 겹칠 때, 얇은 본선만 있으면 구분이 안 되는 문제를 흰 테두리로 보완.
-  // segments: [{path:[LatLng,...], isFallback:bool}, ...] — isFallback 구간은 실제 도로
-  // 데이터가 없어 시작~끝을 직선으로 이은 구간이라, 점선 + 다른 색으로 구분해서 그림.
-  drawNavRoutePolyline(segments){
+  // 길찾기 도로 폴리라인 그리기.
+  // [정리] 예전엔 TMAP이 도로 링크마다 내려주는 LineString을 하나하나 (흰 테두리+본선) 두 개씩
+  // 그려서 선이 수백 개가 되고, 색도 한 가지라 갔다가 같은 길로 돌아오면 선이 정확히 겹쳐서
+  // 구분이 안 됐음. 지금은
+  //  (1) 구간(출발→경유1→…→도착)별로 합쳐서 구간당 선 몇 개만 그리고,
+  //  (2) 구간마다 다른 색을 쓰고,
+  //  (3) 모든 선을 진행 방향 오른쪽으로 살짝 밀어서(NAV_LANE_OFFSET_PX) 왕복하면 차선처럼
+  //      나란히 보이게 하고,
+  //  (4) 실제 도로 데이터가 없어 직선으로 대체한 구간은 같은 색 점선으로 표시함.
+  // legs: [{runs:[{fb:bool, pts:[[lat,lng],...]}], distM}, ...]
+  drawNavRoutePolyline(legs){
     this.clearNavRoutePolylineOnly();
-    if(!segments || !segments.length) return;
-    segments.forEach(seg=>{
-      const path = seg.path;
-      if(!path || path.length<2) return;
-      const mainColor = seg.isFallback ? '#e67e22' : '#c0392b';
-      const style = seg.isFallback ? 'shortdash' : 'solid';
-      const halo = new kakao.maps.Polyline({
-        path, strokeWeight: 7, strokeColor: '#ffffff',
-        strokeOpacity: 0.95, strokeStyle: style
+    if(!legs || !legs.length || !_kakaoMap) return;
+    let ref = null;
+    legs.forEach(leg=>leg.runs.forEach(run=>{ if(!ref && run.pts.length) ref = {lat: run.pts[0][0], lng: run.pts[0][1]}; }));
+    if(!ref) return;
+    const R = {
+      ref, lastMpp: null, legs: [],
+      kx: 111320 * Math.cos(ref.lat * Math.PI/180), ky: 110574
+    };
+    legs.forEach((leg, li)=>{
+      const color = NAV_LEG_COLORS[li % NAV_LEG_COLORS.length];
+      const runs = [];
+      leg.runs.forEach(run=>{
+        if(!run.pts || run.pts.length < 2) return;
+        const lls = run.pts.map(q=> new kakao.maps.LatLng(q[0], q[1]));
+        // 흰 테두리는 전부 맨 아래층(zIndex 1), 색 선은 그 위(2~) — 선이 교차해도 다른 구간의 테두리가
+        // 색 선을 덮지 않고, 뒤 구간일수록 위에 그려짐.
+        const halo = new kakao.maps.Polyline({
+          path: lls, strokeWeight: 9, strokeColor: '#ffffff', strokeOpacity: 0.92, strokeStyle: 'solid', zIndex: 1
+        });
+        const main = new kakao.maps.Polyline({
+          path: lls, strokeWeight: 5, strokeColor: color, strokeOpacity: 1,
+          strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + li
+        });
+        halo.setMap(_kakaoMap);
+        main.setMap(_kakaoMap);
+        _kakaoNavRouteHaloPolylines.push(halo);
+        _kakaoNavRoutePolylines.push(main);
+        runs.push({fb: run.fb, pts: run.pts, offset: run.pts, halo, main});
       });
-      halo.setMap(_kakaoMap);
-      _kakaoNavRouteHaloPolylines.push(halo);
-      const main = new kakao.maps.Polyline({
-        path, strokeWeight: 3.5, strokeColor: mainColor,
-        strokeOpacity: 0.95, strokeStyle: style
-      });
-      main.setMap(_kakaoMap);
-      _kakaoNavRoutePolylines.push(main);
+      R.legs.push({color, runs});
     });
+    _navRouteRender = R;
+    this.refreshNavRouteGeometry(true);
+    this.updateNavMapLegend();
   },
   clearNavRoutePolylineOnly(){
     _kakaoNavRoutePolylines.forEach(p=>p.setMap(null));
     _kakaoNavRoutePolylines = [];
     _kakaoNavRouteHaloPolylines.forEach(p=>p.setMap(null));
     _kakaoNavRouteHaloPolylines = [];
+    _kakaoNavRouteArrows.forEach(o=>o.setMap(null));
+    _kakaoNavRouteArrows = [];
+    _navRouteRender = null;
+    this.updateNavMapLegend();
   },
 
-  // 길찾기 경로에 출발/경유/도착 마커와 진행 방향 화살표를 그림.
-  // 단순 빨간 선 하나만 있으면 어디가 출발이고 어디가 도착인지 구분이 안 되는 문제를 보완.
+  // 지금 줌에서 "차선 간격"이 화면 기준 NAV_LANE_OFFSET_PX가 되도록 선 좌표를 다시 계산하고(줌이
+  // 바뀐 경우에만), 현재 화면 안에 보이는 구간에만 방향 화살표를 일정 간격으로 다시 배치함.
+  refreshNavRouteGeometry(force){
+    const R = _navRouteRender;
+    if(!R || !_kakaoMap) return;
+    const mpp = this.mapMetersPerPixel();
+    if(!mpp) return;
+    if(force || !R.lastMpp || Math.abs(mpp / R.lastMpp - 1) > 0.03){
+      R.lastMpp = mpp;
+      const d = NAV_LANE_OFFSET_PX * mpp;
+      R.legs.forEach(leg=>leg.runs.forEach(run=>{
+        run.offset = offsetPolylineRight(run.pts, d, R.ref);
+        const lls = run.offset.map(q=> new kakao.maps.LatLng(q[0], q[1]));
+        run.halo.setPath(lls);
+        run.main.setPath(lls);
+      }));
+    }
+    this.renderNavRouteArrows();
+  },
+
+  // 진행 방향 화살표 — 구간 색으로 채운 삼각형을 선 위(오프셋된 차선 위)에 일정 간격으로 얹음.
+  renderNavRouteArrows(){
+    _kakaoNavRouteArrows.forEach(o=>o.setMap(null));
+    _kakaoNavRouteArrows = [];
+    const R = _navRouteRender;
+    if(!R || !_kakaoMap || !R.lastMpp) return;
+    const spacing = NAV_ARROW_SPACING_PX * R.lastMpp; // 화살표 간격(m)
+    const vb = _kakaoMap.getBounds();
+    const sw = vb.getSouthWest(), ne = vb.getNorthEast();
+    const padLat = (ne.getLat() - sw.getLat()) * 0.1, padLng = (ne.getLng() - sw.getLng()) * 0.1;
+    const inView = (lat, lng)=> lat > sw.getLat()-padLat && lat < ne.getLat()+padLat &&
+                                lng > sw.getLng()-padLng && lng < ne.getLng()+padLng;
+    const MAX_ARROWS = 60;
+    let made = 0;
+    for(const leg of R.legs){
+      let total = 0;
+      leg.runs.forEach(run=>{
+        for(let i=1; i<run.offset.length; i++){
+          total += Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
+        }
+      });
+      if(total < spacing*0.25) continue; // 화면에서 너무 짧은 구간은 화살표 생략
+      const margin = Math.min(spacing*0.3, total*0.25);
+      const endLimit = total - margin;
+      let next = Math.min(spacing*0.5, total*0.5), walked = 0;
+      for(const run of leg.runs){
+        if(next > endLimit) break;
+        const pts = run.offset;
+        for(let i=1; i<pts.length; i++){
+          const dx = (pts[i][1]-pts[i-1][1])*R.kx, dy = (pts[i][0]-pts[i-1][0])*R.ky;
+          const segLen = Math.hypot(dx, dy);
+          if(segLen <= 0) continue;
+          while(next <= walked + segLen && next <= endLimit){
+            const t = (next - walked) / segLen;
+            const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
+            const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
+            if(made < MAX_ARROWS && inView(lat, lng)){
+              const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+              // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
+              // (예전엔 0x0 박스 안의 SVG를 돌려서 방향에 따라 화살표가 선에서 벗어났음)
+              const ov = new kakao.maps.CustomOverlay({
+                position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 8,
+                content: `<div style="width:22px;height:22px;transform:rotate(${bearing.toFixed(1)}deg);pointer-events:none;">
+                  <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M11 1.5 L19 19 L11 14.5 L3 19 Z" fill="${leg.color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" paint-order="stroke"/>
+                  </svg></div>`
+              });
+              ov.setMap(_kakaoMap);
+              _kakaoNavRouteArrows.push(ov);
+              made++;
+            }
+            next += spacing;
+          }
+          walked += segLen;
+          if(next > endLimit) break;
+        }
+      }
+    }
+  },
+
+  // 지도 안(좌상단)에 구간 색 범례를 얹음 — 지도 컨테이너 안에 있어서 캡처 사진에도 같이 찍힘.
+  updateNavMapLegend(){
+    const container = document.getElementById('kakaoMapContainer');
+    if(!container) return;
+    let el = document.getElementById('navMapLegend');
+    const R = this._lastNavRoute;
+    if(!(_navRouteRender && R && R.legMeta && R.legMeta.length)){ if(el) el.remove(); return; }
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'navMapLegend';
+      el.className = 'nav-map-legend';
+      if(getComputedStyle(container).position === 'static') container.style.position = 'relative';
+      container.appendChild(el);
+    }
+    const MAX_ROWS = 6;
+    const rows = R.legMeta.slice(0, MAX_ROWS).map((m,k)=>
+      `<div class="nml-row"><span class="nml-sw" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>${m.label} · ${m.km}km</div>`
+    ).join('');
+    const more = R.legMeta.length > MAX_ROWS ? `<div class="nml-more">외 ${R.legMeta.length - MAX_ROWS}개 구간</div>` : '';
+    el.innerHTML = rows + more;
+  },
+
+  // 길찾기 경로의 출발/경유/도착 핀.
+  // 핀 색은 "그 핀에 도착하는 구간의 선 색"과 같게 해서 선과 핀이 눈으로 바로 이어지게 함.
+  // 출발지와 도착지가 같은 자리(왕복)면 핀 하나로 합쳐서 "출발/도착"으로 표시.
   clearNavRouteVisuals(){
     _kakaoNavRouteMarkers.forEach(m=>m.setMap(null));
     _kakaoNavRouteMarkers = [];
@@ -3818,19 +4028,20 @@ const App = {
     this.clearNavRouteVisuals();
     if(!_kakaoMap || !this._lastNavRoute) return;
     const pts = this._lastNavRoute.points || [];
-    const path = this._lastNavRoute.path || [];
-    if(pts.length < 2 || path.length < 2) return;
+    const n = pts.length;
+    if(n < 2) return;
 
-    const escName = (n)=> String(n||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const escName = (s)=> String(s||'').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const legColor = (k)=> NAV_LEG_COLORS[Math.max(0,k) % NAV_LEG_COLORS.length];
+    const roleOf = (i)=> i===0 ? '출발' : (i===n-1 ? '도착' : `경유${i}`);
 
     const addPin = (lat, lng, color, badgeText, labelText, z)=>{
-      const pos = new kakao.maps.LatLng(lat, lng);
       const overlay = new kakao.maps.CustomOverlay({
-        position: pos, yAnchor: 1, xAnchor: 0.5, zIndex: z||9,
+        position: new kakao.maps.LatLng(lat, lng), yAnchor: 1, xAnchor: 0.5, zIndex: z,
         content: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
-          <div style="background:${color};color:#fff;font-size:11.5px;font-weight:700;padding:2px 8px;
-            border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.35);">${labelText}</div>
-          <svg width="30" height="38" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));">
+          <div style="background:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 7px;max-width:150px;
+            overflow:hidden;text-overflow:ellipsis;border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.35);">${labelText}</div>
+          <svg width="28" height="36" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));">
             <path d="M15 0C6.7 0 0 6.7 0 15c0 11.2 15 23 15 23s15-11.8 15-23C30 6.7 23.3 0 15 0z" fill="${color}" stroke="#fff" stroke-width="2"/>
             <circle cx="15" cy="15" r="10" fill="#fff"/>
             <text x="15" y="19.5" text-anchor="middle" font-size="12" font-weight="700" fill="${color}">${badgeText}</text>
@@ -3841,36 +4052,22 @@ const App = {
       _kakaoNavRouteMarkers.push(overlay);
     };
 
-    // 출발지 (초록) / 경유지 (주황, 순번) / 도착지 (진한 빨강, 체크무늬 느낌의 진한 색)
+    // 25m 안에 있는 핀끼리 한 묶음으로(출발=도착 왕복이면 한 핀에 "출발/도착")
+    const groups = [];
     pts.forEach((p, i)=>{
-      const isStart = i===0, isEnd = i===pts.length-1;
-      const color = isStart ? '#1E8E3E' : (isEnd ? '#B3261E' : '#F3A712');
-      const badge = isStart ? '🚩' : (isEnd ? '🏁' : String(i));
-      const roleLabel = isStart ? '출발' : (isEnd ? '도착' : `경유 ${i}`);
-      addPin(p.lat, p.lng, color, badge, `${roleLabel} · ${escName(p.name)}`, isStart||isEnd ? 12 : 10);
+      const g = groups.find(g=> haversineMeters(g.lat, g.lng, p.lat, p.lng) < 25);
+      if(g) g.idx.push(i); else groups.push({lat:p.lat, lng:p.lng, idx:[i]});
     });
-
-    // 진행 방향 화살표 — 경로를 몇 구간으로 나눠 각 구간 중간 지점에 방향 삼각형을 얹음
-    const ARROW_COUNT = Math.min(14, Math.max(3, Math.floor(path.length/6)));
-    if(path.length >= 4 && ARROW_COUNT > 0){
-      for(let k=1; k<=ARROW_COUNT; k++){
-        const idx = Math.round((path.length-1) * (k/(ARROW_COUNT+1)));
-        const a = path[Math.max(0, idx-1)];
-        const b = path[Math.min(path.length-1, idx+1)];
-        const bearing = bearingBetween(a.getLat(), a.getLng(), b.getLat(), b.getLng());
-        const mid = path[idx];
-        const arrowOverlay = new kakao.maps.CustomOverlay({
-          position: mid, yAnchor: 0.5, xAnchor: 0.5, zIndex: 7,
-          content: `<div style="transform:rotate(${bearing}deg);width:0;height:0;pointer-events:none;">
-            <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 2px rgba(0,0,0,.5));">
-              <path d="M9 0 L16 15 L9 11 L2 15 Z" fill="#fff" stroke="#c0392b" stroke-width="1.5"/>
-            </svg>
-          </div>`
-        });
-        arrowOverlay.setMap(_kakaoMap);
-        _kakaoNavRouteMarkers.push(arrowOverlay);
-      }
-    }
+    groups.forEach(g=>{
+      const hasStart = g.idx.includes(0), hasEnd = g.idx.includes(n-1);
+      let color, badge;
+      if(hasStart && hasEnd){ color = '#2B2D42'; badge = '🔁'; }
+      else if(hasStart){ color = '#1E8E3E'; badge = '🚩'; }
+      else if(hasEnd){ color = legColor(n-2); badge = '🏁'; }
+      else { color = legColor(g.idx[0]-1); badge = String(g.idx[0]); }
+      const roles = g.idx.map(roleOf).join('/');
+      addPin(g.lat, g.lng, color, badge, `${roles} · ${escName(pts[g.idx[0]].name)}`, (hasStart||hasEnd) ? 12 : 10);
+    });
   },
   // points: [{lat,lng,name}, ...] 방문 순서 그대로. 첫=출발지, 끝=목적지, 중간=경유지.
   // TMAP 자동차 경로안내 API(POST /tmap/routes) 호출. 경유지 유무와 무관하게
@@ -3915,8 +4112,11 @@ const App = {
       if(features.length===0) return {error:'no-route'};
       // 첫 Point 피처(properties.totalDistance/totalTime)가 경로 요약, 나머지 LineString이 실제 경로 좌표
       const summary = features.find(f=> f.geometry && f.geometry.type==='Point' && f.properties && (f.properties.totalDistance || f.properties.totalTime));
-      const path = [];
-      const segments = []; // [{path:[LatLng,...], isFallback:bool}, ...] — 그리기용, 도로 구간과 직선 대체 구간을 구분
+      // [정리] TMAP은 도로 링크마다 LineString 하나씩을 내려줌(수백 개). 그걸 하나씩 그리지 않고
+      // 먼저 "한 줄로 이은 꼭짓점 배열(flat)"로 합친 뒤, 경유지 지점에서 잘라 구간(leg)별로 나눔.
+      // flat 원소: [lat, lng, 직선대체여부(0/1)] — 직선대체여부는 그 점으로 들어오는 선분 기준.
+      const flat = [];
+      const wpTagged = []; // TMAP이 "경유지"라고 표시한 안내점의 flat 인덱스
       const fallbackDescs = [];
       // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
       // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음. 이런 구간은 실패 처리해서
@@ -3924,38 +4124,95 @@ const App = {
       // 판별: "시작~끝 직선거리(chord)"와 "점들을 실제로 따라간 거리(walked)"가 거의 같으면
       // (=꺾이지 않고 쭉 뻗음) + 그 거리가 300m 넘으면, 도로가 아니라 직선으로 대체된 구간으로 간주.
       features.forEach(f=>{
-        if(f.geometry && f.geometry.type==='LineString'){
-          const coords = f.geometry.coordinates || [];
-          if(coords.length<2) return;
-          const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
-          const chord = haversineMeters(lat1,lng1,lat2,lng2);
-          let walked = 0;
-          for(let i=1;i<coords.length;i++){
-            walked += haversineMeters(coords[i-1][1],coords[i-1][0], coords[i][1],coords[i][0]);
+        const g = f.geometry;
+        if(!g) return;
+        if(g.type === 'Point'){
+          const pt = f.properties && f.properties.pointType;
+          if(typeof pt === 'string' && /^(B|PP|VIA)\d*$/i.test(pt) && flat.length){
+            wpTagged.push(flat.length - 1);
           }
-          const isFallback = chord > 300 && walked > 0 && (walked/chord) < 1.03;
-          const segPath = coords.map(c=> new kakao.maps.LatLng(c[1], c[0]));
-          segments.push({path: segPath, isFallback});
-          if(isFallback){
-            // 이 직선 구간의 양 끝점과 가장 가까운 원래 선택 지점(출발/경유/도착) 이름을 찾아 안내 문구 생성.
-            // (도로에서 멀어서 직선으로 대체된 구간은 보통 선택 지점 사이 구간 전체가 그대로 옴)
-            const nearName = (lat,lng)=>{
-              let best=null, bestDist=Infinity;
-              points.forEach(p=>{
-                const d = haversineMeters(lat,lng,p.lat,p.lng);
-                if(d<bestDist){ bestDist=d; best=p; }
-              });
-              return best ? best.name : null;
-            };
-            const nameA = nearName(lat1,lng1);
-            const nameB = nearName(lat2,lng2);
-            const desc = (nameA && nameB && nameA!==nameB) ? `${nameA}↔${nameB}` : (nameA || nameB || '알 수 없는 구간');
-            if(!fallbackDescs.includes(desc)) fallbackDescs.push(desc);
-          }
-          coords.forEach(c=> path.push(new kakao.maps.LatLng(c[1], c[0])));
+          return;
         }
+        if(g.type !== 'LineString') return;
+        const coords = g.coordinates || [];
+        if(coords.length<2) return;
+        const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
+        const chord = haversineMeters(lat1,lng1,lat2,lng2);
+        let walked = 0;
+        for(let i=1;i<coords.length;i++){
+          walked += haversineMeters(coords[i-1][1],coords[i-1][0], coords[i][1],coords[i][0]);
+        }
+        const isFallback = chord > 300 && walked > 0 && (walked/chord) < 1.03;
+        if(isFallback){
+          // 이 직선 구간의 양 끝점과 가장 가까운 원래 선택 지점(출발/경유/도착) 이름을 찾아 안내 문구 생성.
+          const nearName = (lat,lng)=>{
+            let best=null, bestDist=Infinity;
+            points.forEach(p=>{
+              const d = haversineMeters(lat,lng,p.lat,p.lng);
+              if(d<bestDist){ bestDist=d; best=p; }
+            });
+            return best ? best.name : null;
+          };
+          const nameA = nearName(lat1,lng1);
+          const nameB = nearName(lat2,lng2);
+          const desc = (nameA && nameB && nameA!==nameB) ? `${nameA}↔${nameB}` : (nameA || nameB || '알 수 없는 구간');
+          if(!fallbackDescs.includes(desc)) fallbackDescs.push(desc);
+        }
+        coords.forEach((c, ci)=>{
+          const lat = c[1], lng = c[0];
+          if(ci === 0 && flat.length){
+            const last = flat[flat.length-1];
+            if(Math.abs(last[0]-lat) < 1e-7 && Math.abs(last[1]-lng) < 1e-7) return; // 링크 이음점 중복 제거
+          }
+          flat.push([lat, lng, isFallback ? 1 : 0]);
+        });
       });
-      if(path.length<2 || !summary) return {error:'no-route'};
+      if(flat.length<2 || !summary) return {error:'no-route'};
+
+      // 경유지에서 경로를 잘라 구간을 나눌 꼭짓점 인덱스(경유지 수만큼) 정하기.
+      // 1순위: TMAP 안내점 중 "경유지" 표시가 정확히 경유지 수만큼 있으면 그 위치를 사용.
+      // 2순위(표시가 없거나 개수가 안 맞을 때): 경로 위에서 각 경유지에 가장 가까운 점을 순서대로 찾음.
+      //   같은 길을 오가며 여러 번 지나가는 경우를 위해 "가장 가까운 거리 + 10m 이내에서 처음 닿는 곳"을 고름.
+      const W = waypoints.length;
+      let inner = [];
+      const tagOK = W>0 && wpTagged.length === W && wpTagged.every((v,k)=> k===0 || v >= wpTagged[k-1]);
+      if(W > 0){
+        if(tagOK){
+          inner = wpTagged.slice();
+        } else {
+          let from = 0;
+          waypoints.forEach(w=>{
+            let best = Infinity, bestI = from;
+            for(let i=from; i<flat.length; i++){
+              const d = haversineMeters(flat[i][0], flat[i][1], w.lat, w.lng);
+              if(d < best){ best = d; bestI = i; }
+            }
+            for(let i=from; i<flat.length; i++){
+              if(haversineMeters(flat[i][0], flat[i][1], w.lat, w.lng) <= best + 10){ bestI = i; break; }
+            }
+            inner.push(bestI);
+            from = bestI;
+          });
+        }
+      }
+      const cuts = [0, ...inner, flat.length-1];
+      const legs = [];
+      for(let k=0; k<cuts.length-1; k++){
+        const s0 = cuts[k], e0 = Math.max(cuts[k+1], s0);
+        const runs = [];
+        let cur = null, distM = 0;
+        for(let i=s0+1; i<=e0; i++){
+          distM += haversineMeters(flat[i-1][0], flat[i-1][1], flat[i][0], flat[i][1]);
+          const fb = !!flat[i][2];
+          if(!cur || cur.fb !== fb){
+            cur = {fb, pts:[[flat[i-1][0], flat[i-1][1]]]};
+            runs.push(cur);
+          }
+          cur.pts.push([flat[i][0], flat[i][1]]);
+        }
+        legs.push({runs, distM});
+      }
+      const path = flat.map(q=> new kakao.maps.LatLng(q[0], q[1]));
       bumpTmapRouteQuota();
       bumpSharedTmapRouteQuota();
       this.renderKakaoQuota();
@@ -3964,7 +4221,7 @@ const App = {
         distanceKm: Math.round((summary.properties.totalDistance/1000)*10)/10,
         durationMin: Math.round(summary.properties.totalTime/60),
         path,
-        segments,
+        legs,
         fallbackDescs
       };
     }catch(e){
@@ -4382,9 +4639,15 @@ const App = {
         const routePath = parcelList.filter(p=>p.coord).map(p=> new kakao.maps.LatLng(p.coord.lat, p.coord.lng));
         if(this.startPoint) routePath.unshift(new kakao.maps.LatLng(this.startPoint.lat, this.startPoint.lng));
         if(routePath.length>=2){
+          // 길찾기(도로) 경로가 함께 보이는 중이면, 직선 순서선은 얇은 회청색 점선으로 낮춰서
+          // 도로 경로(구간별 색)가 묻히지 않고 화면이 덜 어지럽게 함.
+          const demoteOrderLine = showNavRoute && !!this._lastNavRoute;
           _kakaoRoutePolyline = new kakao.maps.Polyline({
-            path: routePath, strokeWeight: 3, strokeColor: '#2b7fff',
-            strokeOpacity: 0.85, strokeStyle: 'solid'
+            path: routePath,
+            strokeWeight: demoteOrderLine ? 2 : 3,
+            strokeColor: demoteOrderLine ? '#7d8aa8' : '#2b7fff',
+            strokeOpacity: demoteOrderLine ? 0.55 : 0.85,
+            strokeStyle: demoteOrderLine ? 'dash' : 'solid'
           });
           _kakaoRoutePolyline.setMap(_kakaoMap);
           routeStatusEl.classList.add('hidden');
@@ -4404,8 +4667,8 @@ const App = {
     if(!showNavRoute && _kakaoNavRoutePolylines.length){
       this.clearNavRoutePolylineOnly();
       this.clearNavRouteVisuals();
-    } else if(showNavRoute && !_kakaoNavRoutePolylines.length && this._lastNavRoute && this._lastNavRoute.segments){
-      this.drawNavRoutePolyline(this._lastNavRoute.segments);
+    } else if(showNavRoute && !_kakaoNavRoutePolylines.length && this._lastNavRoute && this._lastNavRoute.legs){
+      this.drawNavRoutePolyline(this._lastNavRoute.legs);
       this.renderNavRouteVisuals();
     }
     if(_kakaoNavRoutePolylines.length) any = true;
