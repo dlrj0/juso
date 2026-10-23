@@ -2045,7 +2045,11 @@ const App = {
     if(!this._stickyAddMode) this.toggleStickyAddMode();
   },
   backFromRoute(){
-    this.goScreen(this._startedEmpty ? 'upload' : 'select');
+    if(this._startedEmpty){ this.goScreen('upload'); return; }
+    // 새로고침 복원 직후에는 마을 선택 목록이 한 번도 그려진 적이 없어 빈 화면이 나오므로,
+    // 돌아갈 때마다 최신 상태로 다시 그림.
+    this.renderVillageList();
+    this.goScreen('select');
   },
   startFromManual(){
     if(this.manualParcels.length===0){ alert('추가된 필지가 없어요.'); return; }
