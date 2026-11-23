@@ -3838,6 +3838,7 @@ const App = {
           txt += `\n⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${r.fallbackDescs.join(', ')}`;
         }
         if(r.cutMode) txt += `\n구간 나누기: ${r.cutMode}`;
+        if(r.diag) txt += `\n진단: ${r.diag}`;
         statusEl.textContent = txt;
       } else if(pts.length===1){
         statusEl.textContent = '핀을 1개 더 선택하면 경로를 계산할 수 있어요.';
@@ -3904,6 +3905,19 @@ const App = {
       legMeta: this.buildNavLegMeta(pts, r.legs),
       fallbackDescs: r.fallbackDescs || [],
       cutMode: r.cutMode || '',
+      diag: (()=>{
+        try{
+          const P = r.path, ll = q=>[q.getLat(), q.getLng()];
+          const d = (u, v)=> Math.round(haversineMeters(u[0], u[1], v[0], v[1]));
+          const out = [`경로 시작↔출발지 ${d(ll(P[0]), [pts[0].lat, pts[0].lng])}m`, `경로 끝↔도착지 ${d(ll(P[P.length-1]), [pts[pts.length-1].lat, pts[pts.length-1].lng])}m`];
+          r.legs.slice(0, -1).forEach((leg, k)=>{
+            const run = leg.runs[leg.runs.length-1];
+            if(run && run.pts.length){ const e = run.pts[run.pts.length-1]; out.push(`${k+1}번 구간 끝↔경유${k+1} ${d(e, [pts[k+1].lat, pts[k+1].lng])}m`); }
+            else out.push(`${k+1}번 구간 비어 있음`);
+          });
+          return out.join(' · ');
+        }catch(e){ return ''; }
+      })(),
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
     this._navFocus = null;
@@ -4116,6 +4130,40 @@ const App = {
           if(next > endLimit) break;
         }
       }
+    }
+
+    // 출발 후 누적 거리 라벨(100m, 200m …): 같은 길을 오가거나 선이 겹쳐도 숫자가 클수록 '나중에 지나는 곳'이라
+    // 어느 선이 먼저이고 어디로 이어지는지 숫자만 따라가면 알 수 있음.
+    {
+      const target = 110 * R.lastMpp;
+      const stepsM = [100, 200, 300, 500, 1000, 2000, 5000];
+      let stepM = stepsM[stepsM.length-1];
+      for(const st of stepsM){ if(st >= target){ stepM = st; break; } }
+      let cum = 0, nextL = stepM, cnt = 0;
+      R.legs.forEach((leg, li)=>{
+        leg.runs.forEach(run=>{
+          const pts = run.offset;
+          for(let i=1; i<pts.length; i++){
+            const seg = Math.hypot((pts[i][1]-pts[i-1][1])*R.kx, (pts[i][0]-pts[i-1][0])*R.ky);
+            if(seg <= 0) continue;
+            while(nextL <= cum + seg){
+              const t = (nextL - cum) / seg;
+              const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
+              const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
+              if(cnt < 40 && inView(lat, lng) && (this._navFocus === null || this._navFocus === li)){
+                const txt = nextL >= 1000 ? (nextL/1000)+'km' : nextL+'m';
+                const ov = new kakao.maps.CustomOverlay({
+                  position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 7,
+                  content: `<div style="padding:0 4px;height:15px;line-height:13px;border-radius:8px;background:#fff;border:1.5px solid ${leg.color};color:#222;font-size:10px;font-weight:700;pointer-events:none;white-space:nowrap;">${txt}</div>`
+                });
+                ov.setMap(_kakaoMap); _kakaoNavRouteArrows.push(ov); cnt++;
+              }
+              nextL += stepM;
+            }
+            cum += seg;
+          }
+        });
+      });
     }
   },
 
