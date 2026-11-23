@@ -901,9 +901,16 @@ function offsetPolylineRight(pts, dMeters, ref){
     const x = (q[1]-ref.lng)*kx, y = (q[0]-ref.lat)*ky;
     const last = xy[xy.length-1];
     if(last && Math.abs(last.x-x) < 0.05 && Math.abs(last.y-y) < 0.05) continue; // 5cm 이내 중복점 제거
-    xy.push({x, y});
+    xy.push({x, y, w:(q[2]||0)});
   }
   if(xy.length < 2 || !dMeters) return pts.map(q=>[q[0], q[1]]);
+  // pts[i][2]=1이면 "같은 길을 여러 번 지나는 지점". 그 지점에서만 벌리고, 앞뒤 ±8점에 걸쳐
+  // 서서히 0↔1로 이어지게 해서(겹침 시작/끝에서 선이 튀지 않게) 나머지 구간은 도로 위에 그대로 둠.
+  const R = 8, sm = xy.map((_,i)=>{
+    let t = 0, c = 0;
+    for(let k=Math.max(0,i-R); k<=Math.min(xy.length-1,i+R); k++){ t += xy[k].w; c++; }
+    return Math.min(1, 2*t/c);   // 짧은 겹침도 충분히 벌어지도록 2배 가중(최대 1)
+  });
   const nrm = [];
   for(let i=0; i<xy.length-1; i++){
     const dx = xy[i+1].x-xy[i].x, dy = xy[i+1].y-xy[i].y, len = Math.hypot(dx, dy) || 1;
@@ -920,7 +927,8 @@ function offsetPolylineRight(pts, dMeters, ref){
       if(sl < 1e-3){ nx = a.x; ny = a.y; }               // 완전 U턴: 앞 구간 기준으로만 밀기
       else { nx = sx/sl; ny = sy/sl; scale = 1/Math.max(nx*a.x + ny*a.y, 0.55); } // 모서리가 뾰족해지는 정도 제한
     }
-    out.push([ref.lat + (xy[i].y + ny*dMeters*scale)/ky, ref.lng + (xy[i].x + nx*dMeters*scale)/kx]);
+    const di = dMeters * sm[i] * scale;
+    out.push([ref.lat + (xy[i].y + ny*di)/ky, ref.lng + (xy[i].x + nx*di)/kx]);
   }
   return out;
 }
@@ -1135,9 +1143,10 @@ let _kakaoNavRouteArrows = [];         // 진행 방향 화살표(지도가 멈�
 let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라인의 구간/꼭짓점 정보(차선 오프셋 재계산용)
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
-const NAV_LANE_OFFSET_PX = 0;   // 오프셋 없음: 겹치는 구간은 '나중 구간이 위' 레이어로 구분
-const NAV_PASS_WIDTHS = [8, 5, 3];  // 같은 길을 1번째/2번째/3번째 지날 때의 선 굵기 — 나중에 지날수록 가늘고 연하게 위에 겹침
-function tintColor(hex, t){   // 색을 흰색 쪽으로 t(0~1)만큼 섞음
+const NAV_LANE_OFFSET_PX = 6;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
+const NAV_PASS_WIDTHS = [5, 5, 5];  // 연하고 가늘게 겹치는 방식은 노란 도로 위에서 안 보여서 폐기 — 굵기 동일
+function tintColor(hex, t){   // (현재 미사용: 연한 색 방식 폐기) 색을 그대로 반환
+  return hex;
   const n = parseInt(hex.slice(1), 16), m = c => Math.round(c + (255-c)*t);
   return '#' + [(n>>16)&255, (n>>8)&255, n&255].map(c=>m(c).toString(16).padStart(2,'0')).join('');
 }
@@ -3846,7 +3855,7 @@ const App = {
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
             <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">같은 길을 다시 지나면 나중에 지나는 쪽이 위에, 더 가늘고 연한 색으로 그려져요(굵고 진한 띠 가운데에 연한 줄이 보이면 왕복). 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
+          `<div class="nav-leg-hint">같은 길을 다시 지나는 곳에서만 오른쪽 차선으로 벌어져 나란히 그려지고, 나머지는 도로 위에 그대로 그려져요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -4280,18 +4289,19 @@ const App = {
         for(let i=0; i<flat.length; i++){
           const x = flat[i][1]*kx, y = flat[i][0]*ky;
           const cx = Math.floor(x/CELL), cy = Math.floor(y/CELL);
-          let lv = 0;
+          let lv = 0, ov = false;
           for(let dx=-1; dx<=1; dx++) for(let dy=-1; dy<=1; dy++){
             const arr = grid.get((cx+dx)+','+(cy+dy));
             if(!arr) continue;
             for(const q of arr){
-              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL) lv = Math.max(lv, Math.min(2, q.lv+1));
+              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL){ lv = Math.max(lv, Math.min(2, q.lv+1)); ov = true; flat[q.i][4] = 1; }
             }
           }
           flat[i][3] = lv;
+          if(ov) flat[i][4] = 1;
           const key = cx+','+cy;
           if(!grid.has(key)) grid.set(key, []);
-          grid.get(key).push({x, y, c:cum[i], lv});
+          grid.get(key).push({x, y, c:cum[i], lv, i});
         }
       }
 
@@ -4330,12 +4340,12 @@ const App = {
         for(let i=s0+1; i<=e0; i++){
           distM += haversineMeters(flat[i-1][0], flat[i-1][1], flat[i][0], flat[i][1]);
           const fb = !!flat[i][2];
-          const lv = flat[i][3] || 0;
+          const lv = 0;   // 재방문 단계로 선을 쪼개지 않음(쪼개면 평행선 이음새가 끊김)
           if(!cur || cur.fb !== fb || cur.lv !== lv){
-            cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1]]]};
+            cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1], flat[i-1][4]||0]]};
             runs.push(cur);
           }
-          cur.pts.push([flat[i][0], flat[i][1]]);
+          cur.pts.push([flat[i][0], flat[i][1], flat[i][4]||0]);
         }
         legs.push({runs, distM});
       }
