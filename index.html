@@ -1144,7 +1144,7 @@ let _kakaoNavRouteArrows = [];         // 진행 방향 화살표(지도가 멈�
 let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라인의 구간/꼭짓점 정보(차선 오프셋 재계산용)
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
-const NAV_LANE_OFFSET_PX = 6;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
+const NAV_LANE_OFFSET_PX = 8;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
 const NAV_PASS_WIDTHS = [5, 5, 5];  // 연하고 가늘게 겹치는 방식은 노란 도로 위에서 안 보여서 폐기 — 굵기 동일
 function tintColor(hex, t){   // 색을 검정 쪽으로 어둡게(이름은 유지). t=0.5 → 30%, 0.72 → 43% 어둡게
   const n = parseInt(hex.slice(1), 16), k = 1 - t*0.6;
@@ -3837,6 +3837,7 @@ const App = {
         if(r.fallbackDescs && r.fallbackDescs.length){
           txt += `\n⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${r.fallbackDescs.join(', ')}`;
         }
+        if(r.cutMode) txt += `\n구간 나누기: ${r.cutMode}`;
         statusEl.textContent = txt;
       } else if(pts.length===1){
         statusEl.textContent = '핀을 1개 더 선택하면 경로를 계산할 수 있어요.';
@@ -3902,6 +3903,7 @@ const App = {
       legs: r.legs,
       legMeta: this.buildNavLegMeta(pts, r.legs),
       fallbackDescs: r.fallbackDescs || [],
+      cutMode: r.cutMode || '',
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
     this._navFocus = null;
@@ -3951,7 +3953,7 @@ const App = {
         });
         const main = new kakao.maps.Polyline({
           path: lls, strokeWeight: NAV_PASS_WIDTHS[Math.min(run.lv||0,2)], strokeColor: (run.lv ? tintColor(color, run.lv===1 ? 0.5 : 0.72) : color), strokeOpacity: 1,
-          strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + (run.lv||0)*10 + li
+          strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + li*10 + (run.lv||0)
         });
         halo.setMap(_kakaoMap);
         main.setMap(_kakaoMap);
@@ -3999,7 +4001,7 @@ const App = {
       if(f === null){
         const w = NAV_PASS_WIDTHS[Math.min(run.lv||0,2)];
         run.halo.setOptions({strokeOpacity:0.95, strokeWeight:w+3, zIndex:1});
-        run.main.setOptions({strokeColor:(run.lv ? tintColor(leg.color, run.lv===1?0.5:0.72) : leg.color), strokeOpacity:1, strokeWeight:w, zIndex:2+(run.lv||0)*10+li});
+        run.main.setOptions({strokeColor:(run.lv ? tintColor(leg.color, run.lv===1?0.5:0.72) : leg.color), strokeOpacity:1, strokeWeight:w, zIndex:2+li*10+(run.lv||0)});
       } else if(li === f){
         run.halo.setOptions({strokeOpacity:1, strokeWeight:12, zIndex:60});
         run.main.setOptions({strokeColor:(run.lv ? tintColor(leg.color, run.lv===1?0.5:0.72) : leg.color), strokeOpacity:1, strokeWeight:NAV_PASS_WIDTHS[Math.min(run.lv||0,2)]+3, zIndex:61+(run.lv||0)});
@@ -4075,9 +4077,12 @@ const App = {
         }
       }
       if(total < spacing*0.25) continue; // 화면에서 너무 짧은 구간은 화살표 생략
-      const margin = Math.min(spacing*0.3, total*0.25);
+      // 짧은 구간(예: 경유지로 들어가거나 나오는 연결선)은 가운데 번호 배지 때문에 화살표가 하나도 안 생겨
+      // 방향을 알 수 없었음 → 25% / 75% 지점에 화살표를 하나씩 둠(가운데는 번호 배지).
+      const shortLeg = total < spacing*1.6;
+      const margin = shortLeg ? total*0.2 : Math.min(spacing*0.3, total*0.25);
       const endLimit = total - margin;
-      let next = Math.min(spacing*0.5, total*0.5), walked = 0;
+      let next = shortLeg ? total*0.25 : Math.min(spacing*0.5, total*0.5), walked = 0;
       for(const run of leg.runs){
         if(next > endLimit) break;
         const pts = run.offset;
@@ -4091,7 +4096,7 @@ const App = {
             const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
             if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - total/2) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
               const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
-              const sz = (pts[i][2] > 0.5) ? 20 : 16;   // 오가는 겹침 구간은 방향 화살표를 크게
+              const sz = (pts[i][2] > 0.5) ? 18 : 16;   // 오가는 겹침 구간은 방향 화살표를 크게
               // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
               // (예전엔 0x0 박스 안의 SVG를 돌려서 방향에 따라 화살표가 선에서 벗어났음)
               const ov = new kakao.maps.CustomOverlay({
@@ -4105,7 +4110,7 @@ const App = {
               _kakaoNavRouteArrows.push(ov);
               made++;
             }
-            next += (pts[i][2] > 0.5 ? spacing*0.3 : spacing);   // 겹침 구간은 화살표 간격을 촘촘하게
+            next += shortLeg ? total*0.5 : (pts[i][2] > 0.5 ? spacing*0.45 : spacing);   // 겹침 구간은 화살표 간격을 촘촘하게
           }
           walked += segLen;
           if(next > endLimit) break;
@@ -4234,6 +4239,7 @@ const App = {
       // flat 원소: [lat, lng, 직선대체여부(0/1)] — 직선대체여부는 그 점으로 들어오는 선분 기준.
       const flat = [];
       const wpTagged = []; // TMAP이 "경유지"라고 표시한 안내점의 flat 인덱스
+      const links = [];   // 링크(LineString)별 {s:flat 시작 인덱스, e:끝 인덱스, n:점 개수, chord, walked} — 경유지 연결선 판별용
       const fallbackDescs = [];
       // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
       // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음. 이런 구간은 실패 처리해서
@@ -4270,6 +4276,7 @@ const App = {
           const desc = (nameA && nameB && nameA!==nameB) ? `${nameA}↔${nameB}` : (nameA || nameB || '알 수 없는 구간');
           if(!fallbackDescs.includes(desc)) fallbackDescs.push(desc);
         }
+        const linkStart = flat.length;
         coords.forEach((c, ci)=>{
           const lat = c[1], lng = c[0];
           if(ci === 0 && flat.length){
@@ -4278,6 +4285,12 @@ const App = {
           }
           flat.push([lat, lng, isFallback ? 1 : 0]);
         });
+        {
+          let walkedL = 0;
+          for(let i=1; i<coords.length; i++) walkedL += haversineMeters(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]);
+          links.push({s: linkStart, e: flat.length-1, n: coords.length,
+            chord: haversineMeters(lat1, lng1, lat2, lng2), walked: walkedL});
+        }
       });
       if(flat.length<2 || !summary) return {error:'no-route'};
 
@@ -4363,6 +4376,17 @@ const App = {
       }
       const cuts = [0, ...inner, flat.length-1];
 
+      // 경유지 핀은 도로 위가 아니라 건물/주차장 안인 경우가 많아서, TMAP은 도로에서 핀까지 "짧고 곧은 연결선"
+      // (점 2~3개)을 경로에 넣어줌. 이게 일반 도로와 똑같이 그려지면 '도로로 갔다'고 오해되므로,
+      // 경유지 바로 앞/뒤의 그런 연결선은 점선으로 그려서 "도로가 아니라 경유지까지 이은 선"임을 구분함.
+      inner.forEach(c0=>{
+        links.forEach(L=>{
+          if((L.e === c0 || L.s-1 === c0) && L.n <= 3 && L.chord >= 25 && L.walked/L.chord < 1.03){
+            for(let i=Math.max(0,L.s); i<=L.e; i++) flat[i][2] = 1;
+          }
+        });
+      });
+
       // 경유지가 도로에서 떨어져 있으면 "도로 → 경유지 → 같은 길로 되돌아 나옴"(왕복 가지)이 생김.
       // 이런 가지는 짧아서 위의 짧은 겹침 정리에 지워지거나 선이 붙어 보이므로, 경유지 점을 기준으로
       // 앞뒤로 같은 거리만큼 거울처럼 비교해서(가는 점 ↔ 오는 점이 22m 이내) 겹침으로 확실히 표시함.
@@ -4409,7 +4433,8 @@ const App = {
         durationMin: Math.round(summary.properties.totalTime/60),
         path,
         legs,
-        fallbackDescs
+        fallbackDescs,
+        cutMode: (W>0 ? (tagOK ? 'TMAP 경유지 표시' : '경로에서 가장 가까운 점으로 추정') : '')
       };
     }catch(e){
       return {error:'network', message:String(e)};
