@@ -1135,7 +1135,8 @@ let _kakaoNavRouteArrows = [];         // 진행 방향 화살표(지도가 멈�
 let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라인의 구간/꼭짓점 정보(차선 오프셋 재계산용)
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
-const NAV_LANE_OFFSET_PX = 3;   // 같은 길을 오가는 구간이 겹치지 않도록 살짝만 밀어 그림
+const NAV_LANE_OFFSET_PX = 0;   // 오프셋 없음: 겹치는 구간은 '나중 구간이 위' 레이어로 구분
+const NAV_LEG_WIDTHS = [9, 7, 5, 4];  // 먼저 지난 구간일수록 굵게 → 겹치면 아래 구간 색이 테두리처럼 보임
 const NAV_ARROW_SPACING_PX = 260; // 화살표는 듬성듬성(방향만 알 수 있게) // 진행 방향 화살표 간격(화면 픽셀)
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
@@ -3076,6 +3077,9 @@ const App = {
         level: 8
       });
       _kakaoMap.setMapTypeId(kakao.maps.MapTypeId[this._currentMapType || 'ROADMAP']);
+      _kakaoMap.setMinLevel(1);    // 1 = 카카오가 허용하는 최대 확대
+      _kakaoMap.setMaxLevel(14);
+      _kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);   // + / − 버튼
       this.ensureMapResizeObserver(container);
       // 확대/축소가 바뀌면 화면상 필지 사이 간격(픽셀 거리)도 달라지므로, 지번 겹침
       // 방지 배치(디클러터)를 다시 계산해야 함. 스크롤휠 연타 등으로 이벤트가 촘촘히
@@ -3838,7 +3842,7 @@ const App = {
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
             <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">구간을 탭하면 그 구간만 진하게 보여요. 다시 탭하면 전체 보기예요. 화살표(▲)는 가는 방향이에요.</div>`;
+          `<div class="nav-leg-hint">같은 길을 다시 지나면 나중 구간이 위에 그려져요(먼저 지난 구간이 더 굵어서 가장자리에 보여요). 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -3923,6 +3927,7 @@ const App = {
     };
     legs.forEach((leg, li)=>{
       const color = NAV_LEG_COLORS[li % NAV_LEG_COLORS.length];
+      const lw = NAV_LEG_WIDTHS[Math.min(li, NAV_LEG_WIDTHS.length-1)];
       const runs = [];
       leg.runs.forEach(run=>{
         if(!run.pts || run.pts.length < 2) return;
@@ -3930,10 +3935,10 @@ const App = {
         // 흰 테두리는 전부 맨 아래층(zIndex 1), 색 선은 그 위(2~) — 선이 교차해도 다른 구간의 테두리가
         // 색 선을 덮지 않고, 뒤 구간일수록 위에 그려짐.
         const halo = new kakao.maps.Polyline({
-          path: lls, strokeWeight: 9, strokeColor: '#ffffff', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 1
+          path: lls, strokeWeight: lw+3, strokeColor: '#ffffff', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 1
         });
         const main = new kakao.maps.Polyline({
-          path: lls, strokeWeight: 5, strokeColor: color, strokeOpacity: 1,
+          path: lls, strokeWeight: lw, strokeColor: color, strokeOpacity: 1,
           strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + li
         });
         halo.setMap(_kakaoMap);
@@ -3980,8 +3985,9 @@ const App = {
     const f = this._navFocus;
     R.legs.forEach((leg, li)=>leg.runs.forEach(run=>{
       if(f === null){
-        run.halo.setOptions({strokeOpacity:0.95, strokeWeight:9, zIndex:1});
-        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:5, zIndex:2+li});
+        const lw = NAV_LEG_WIDTHS[Math.min(li, NAV_LEG_WIDTHS.length-1)];
+        run.halo.setOptions({strokeOpacity:0.95, strokeWeight:lw+3, zIndex:1});
+        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:lw, zIndex:2+li});
       } else if(li === f){
         run.halo.setOptions({strokeOpacity:1, strokeWeight:12, zIndex:60});
         run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:7, zIndex:61});
