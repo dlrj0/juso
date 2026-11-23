@@ -1136,7 +1136,11 @@ let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라�
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
 const NAV_LANE_OFFSET_PX = 0;   // 오프셋 없음: 겹치는 구간은 '나중 구간이 위' 레이어로 구분
-const NAV_LEG_WIDTHS = [9, 7, 5, 4];  // 먼저 지난 구간일수록 굵게 → 겹치면 아래 구간 색이 테두리처럼 보임
+const NAV_PASS_WIDTHS = [8, 5, 3];  // 같은 길을 1번째/2번째/3번째 지날 때의 선 굵기 — 나중에 지날수록 가늘고 연하게 위에 겹침
+function tintColor(hex, t){   // 색을 흰색 쪽으로 t(0~1)만큼 섞음
+  const n = parseInt(hex.slice(1), 16), m = c => Math.round(c + (255-c)*t);
+  return '#' + [(n>>16)&255, (n>>8)&255, n&255].map(c=>m(c).toString(16).padStart(2,'0')).join('');
+}
 const NAV_ARROW_SPACING_PX = 260; // 화살표는 듬성듬성(방향만 알 수 있게) // 진행 방향 화살표 간격(화면 픽셀)
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
@@ -3842,7 +3846,7 @@ const App = {
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
             <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">같은 길을 다시 지나면 나중 구간이 위에 그려져요(먼저 지난 구간이 더 굵어서 가장자리에 보여요). 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
+          `<div class="nav-leg-hint">같은 길을 다시 지나면 나중에 지나는 쪽이 위에, 더 가늘고 연한 색으로 그려져요(굵고 진한 띠 가운데에 연한 줄이 보이면 왕복). 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -3927,7 +3931,6 @@ const App = {
     };
     legs.forEach((leg, li)=>{
       const color = NAV_LEG_COLORS[li % NAV_LEG_COLORS.length];
-      const lw = NAV_LEG_WIDTHS[Math.min(li, NAV_LEG_WIDTHS.length-1)];
       const runs = [];
       leg.runs.forEach(run=>{
         if(!run.pts || run.pts.length < 2) return;
@@ -3935,17 +3938,17 @@ const App = {
         // 흰 테두리는 전부 맨 아래층(zIndex 1), 색 선은 그 위(2~) — 선이 교차해도 다른 구간의 테두리가
         // 색 선을 덮지 않고, 뒤 구간일수록 위에 그려짐.
         const halo = new kakao.maps.Polyline({
-          path: lls, strokeWeight: lw+3, strokeColor: '#ffffff', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 1
+          path: lls, strokeWeight: NAV_PASS_WIDTHS[Math.min(run.lv||0,2)]+3, strokeColor: '#ffffff', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 1
         });
         const main = new kakao.maps.Polyline({
-          path: lls, strokeWeight: lw, strokeColor: color, strokeOpacity: 1,
-          strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + li
+          path: lls, strokeWeight: NAV_PASS_WIDTHS[Math.min(run.lv||0,2)], strokeColor: (run.lv ? tintColor(color, run.lv===1 ? 0.5 : 0.72) : color), strokeOpacity: 1,
+          strokeStyle: run.fb ? 'shortdash' : 'solid', zIndex: 2 + (run.lv||0)*10 + li
         });
         halo.setMap(_kakaoMap);
         main.setMap(_kakaoMap);
         _kakaoNavRouteHaloPolylines.push(halo);
         _kakaoNavRoutePolylines.push(main);
-        runs.push({fb: run.fb, pts: run.pts, offset: run.pts, halo, main});
+        runs.push({fb: run.fb, lv: run.lv||0, pts: run.pts, offset: run.pts, halo, main});
       });
       R.legs.push({color, runs});
     });
@@ -3985,12 +3988,12 @@ const App = {
     const f = this._navFocus;
     R.legs.forEach((leg, li)=>leg.runs.forEach(run=>{
       if(f === null){
-        const lw = NAV_LEG_WIDTHS[Math.min(li, NAV_LEG_WIDTHS.length-1)];
-        run.halo.setOptions({strokeOpacity:0.95, strokeWeight:lw+3, zIndex:1});
-        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:lw, zIndex:2+li});
+        const w = NAV_PASS_WIDTHS[Math.min(run.lv||0,2)];
+        run.halo.setOptions({strokeOpacity:0.95, strokeWeight:w+3, zIndex:1});
+        run.main.setOptions({strokeColor:(run.lv ? tintColor(leg.color, run.lv===1?0.5:0.72) : leg.color), strokeOpacity:1, strokeWeight:w, zIndex:2+(run.lv||0)*10+li});
       } else if(li === f){
         run.halo.setOptions({strokeOpacity:1, strokeWeight:12, zIndex:60});
-        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:7, zIndex:61});
+        run.main.setOptions({strokeColor:(run.lv ? tintColor(leg.color, run.lv===1?0.5:0.72) : leg.color), strokeOpacity:1, strokeWeight:NAV_PASS_WIDTHS[Math.min(run.lv||0,2)]+3, zIndex:61+(run.lv||0)});
       } else {
         run.halo.setOptions({strokeOpacity:0, zIndex:1});
         run.main.setOptions({strokeColor:'#9AA0A6', strokeOpacity:0.55, strokeWeight:3, zIndex:2});
@@ -4268,6 +4271,30 @@ const App = {
       });
       if(flat.length<2 || !summary) return {error:'no-route'};
 
+      // 같은 길을 몇 번째로 지나는지(0=처음, 1=두 번째, 2=세 번째 이상) 계산.
+      // 이미 지나온 점(경로상 60m 이상 앞)이 18m 안에 있으면 재방문으로 보고 단계를 올림.
+      {
+        const kx = 111320 * Math.cos(flat[0][0]*Math.PI/180), ky = 110574, CELL = 18;
+        const grid = new Map(), cum = [0];
+        for(let i=1; i<flat.length; i++) cum[i] = cum[i-1] + Math.hypot((flat[i][1]-flat[i-1][1])*kx, (flat[i][0]-flat[i-1][0])*ky);
+        for(let i=0; i<flat.length; i++){
+          const x = flat[i][1]*kx, y = flat[i][0]*ky;
+          const cx = Math.floor(x/CELL), cy = Math.floor(y/CELL);
+          let lv = 0;
+          for(let dx=-1; dx<=1; dx++) for(let dy=-1; dy<=1; dy++){
+            const arr = grid.get((cx+dx)+','+(cy+dy));
+            if(!arr) continue;
+            for(const q of arr){
+              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL) lv = Math.max(lv, Math.min(2, q.lv+1));
+            }
+          }
+          flat[i][3] = lv;
+          const key = cx+','+cy;
+          if(!grid.has(key)) grid.set(key, []);
+          grid.get(key).push({x, y, c:cum[i], lv});
+        }
+      }
+
       // 경유지에서 경로를 잘라 구간을 나눌 꼭짓점 인덱스(경유지 수만큼) 정하기.
       // 1순위: TMAP 안내점 중 "경유지" 표시가 정확히 경유지 수만큼 있으면 그 위치를 사용.
       // 2순위(표시가 없거나 개수가 안 맞을 때): 경로 위에서 각 경유지에 가장 가까운 점을 순서대로 찾음.
@@ -4303,8 +4330,9 @@ const App = {
         for(let i=s0+1; i<=e0; i++){
           distM += haversineMeters(flat[i-1][0], flat[i-1][1], flat[i][0], flat[i][1]);
           const fb = !!flat[i][2];
-          if(!cur || cur.fb !== fb){
-            cur = {fb, pts:[[flat[i-1][0], flat[i-1][1]]]};
+          const lv = flat[i][3] || 0;
+          if(!cur || cur.fb !== fb || cur.lv !== lv){
+            cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1]]]};
             runs.push(cur);
           }
           cur.pts.push([flat[i][0], flat[i][1]]);
