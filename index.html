@@ -527,10 +527,9 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <p class="hint" style="margin:6px 2px 0;text-align:center;">계산/지도 화면 아래 검색창에서 필지를 하나씩 추가할 수 있어요.</p>
     <div class="card" id="manualAddCard">
       <h3 style="font-size:15px;margin-bottom:4px;">필지 직접 추가</h3>
-      <p class="hint" style="margin-top:0;">몇 개 필지만 조사할 때는 엑셀 없이 여기서 바로 추가해서 시작할 수 있어요.</p>
+      <p class="hint" style="margin-top:0;">주소를 검색해서 고르면 본번·부번과 좌표까지 바로 채워져요. 별도의 위치 확인 없이 곧장 동선 계산으로 넘어갈 수 있어요.</p>
 
       <div id="manualParcelForm"></div>
-      <button class="ghost-btn" style="margin-top:10px;" onclick="App.addManualParcel()">+ 이 필지 추가</button>
 
       <div id="manualParcelListWrap"></div>
 
@@ -593,7 +592,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div class="geo-status" id="geoStatus">마을 위치 확인 전</div>
 
     <div class="card" id="parcelGeoCard" style="margin-top:2px;">
-      <h3 style="font-size:14.5px;margin-bottom:2px;">필지 위치 확인(필수)</h3>
+      <h3 style="font-size:14.5px;margin-bottom:2px;">필지 위치</h3>
       <div class="gps-row">
         <button class="gps-btn btn-highlight" id="parcelGeoBtn" onclick="App.geocodeParcels()">필지 위치 확인</button>
         <button class="gps-btn hidden" id="parcelGeoCancelBtn" onclick="App.cancelParcelGeocode()">■ 중단하기</button>
@@ -1135,9 +1134,9 @@ let _kakaoNavRouteMarkers = [];
 let _kakaoNavRouteArrows = [];         // 진행 방향 화살표(지도가 멈출 때마다 현재 화면 범위에 맞춰 다시 배치)
 let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라인의 구간/꼭짓점 정보(차선 오프셋 재계산용)
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
-const NAV_LEG_COLORS = ['#E5383B','#1D70F5','#FF8C00','#8E3FD1','#0FA37F','#D6336C','#6B8E00','#00A3D9','#8D5524','#2B2D42','#C9A000'];
-const NAV_LANE_OFFSET_PX = 4.5;   // 같은 길을 오가는 선이 겹치지 않도록, 진행 방향 오른쪽으로 밀어서 그리는 거리(화면 픽셀)
-const NAV_ARROW_SPACING_PX = 130; // 진행 방향 화살표 간격(화면 픽셀)
+const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
+const NAV_LANE_OFFSET_PX = 3;   // 같은 길을 오가는 구간이 겹치지 않도록 살짝만 밀어 그림
+const NAV_ARROW_SPACING_PX = 260; // 화살표는 듬성듬성(방향만 알 수 있게) // 진행 방향 화살표 간격(화면 픽셀)
 let _kakaoUserMarker = null;
 let _kakaoGpsWatchId = null;
 
@@ -1436,6 +1435,27 @@ function placesKeywordSearchJibunRaw(query){
   });
 }
 
+function geocoderKakaoMultiRaw(addrText){
+  return new Promise((resolve, reject)=>{
+    if(typeof kakao === 'undefined' || !kakao.maps || !kakao.maps.services){ reject(new Error('kakao-sdk-not-loaded')); return; }
+    new kakao.maps.services.Geocoder().addressSearch(addrText, (result, status)=>{
+      if(status === kakao.maps.services.Status.OK && result){
+        resolve({ok:true, list: result.map(r=>{
+          const a = (r.address && r.address.address_name) || r.address_name;
+          return {name:a, addr:a, lat:parseFloat(r.y), lng:parseFloat(r.x)};
+        })});
+      } else if(status === kakao.maps.services.Status.ZERO_RESULT){ resolve({ok:true, list:[]}); }
+      else resolve({error:'kakao-error', status});
+    });
+  });
+}
+// 주소 끝의 지번에서 본번/부번 추출 ("산 12-3" → 본번 '산12', 부번 '3')
+function parseJibunFromAddr(addr){
+  const m = String(addr||'').trim().match(/(산\s*)?(\d+)(?:-(\d+))?\s*$/);
+  if(!m) return {bon:'', bu:''};
+  return {bon:(m[1]?'산':'')+m[2], bu:m[3]||''};
+}
+
 const JUSO_SEARCH_KEY = 'YOUR_JUSO_SEARCH_API_KEY';
 const JUSO_COORD_KEY  = 'YOUR_JUSO_COORD_API_KEY';
 
@@ -1525,7 +1545,7 @@ function fullGeocodeAddr(addr, jibun){
   // addr 자체에 이미 지번이 포함돼 있으면(검색으로 추가된 필지는 addr이 API가 돌려준
   // 완전한 주소라 지번까지 포함돼 있음) 중복해서 붙이지 않음 — 중복되면 지오코딩
   // API가 주소를 못 찾는 원인이 될 수 있음.
-  if(a.endsWith(String(jibun).trim())) return a;
+  if(a.replace(/\s/g,'').endsWith(String(jibun).replace(/\s/g,''))) return a;
   return `${a} ${jibun}`;
 }
 
@@ -1592,6 +1612,10 @@ const App = {
       if(!e.target.closest('#parcelSearchInput') && !e.target.closest('#parcelSearchResults')){
         const box = document.getElementById('parcelSearchResults');
         if(box) box.classList.add('hidden');
+      }
+      if(!e.target.closest('#manualSearchInput') && !e.target.closest('#manualSearchResults')){
+        const box3 = document.getElementById('manualSearchResults');
+        if(box3) box3.classList.add('hidden');
       }
       if(!e.target.closest('#addParcelInput') && !e.target.closest('#addParcelResults')){
         const box2 = document.getElementById('addParcelResults');
@@ -1975,17 +1999,11 @@ const App = {
   renderManualAddCard(){
     const form = document.getElementById('manualParcelForm');
     let html = `
-      <label class="fieldlabel" style="margin-top:14px;">소재지 (주소) <span style="font-weight:400;color:var(--text-mute);">(필수)</span></label>
-      <input type="text" id="manualAddrInput" placeholder="예: 전북특별자치도 OO시 OO읍 OO리 123">
-      <div class="two-col">
-        <div>
-          <label class="fieldlabel">본번 <span style="font-weight:400;color:var(--text-mute);">(선택)</span></label>
-          <input type="text" id="manualBonInput" placeholder="예: 123">
-        </div>
-        <div>
-          <label class="fieldlabel">부번 <span style="font-weight:400;color:var(--text-mute);">(선택)</span></label>
-          <input type="text" id="manualBuInput" placeholder="예: 4">
-        </div>
+      <label class="fieldlabel" style="margin-top:14px;">주소 검색해서 추가</label>
+      <div class="searchbar" style="position:relative;">
+        <input type="text" id="manualSearchInput" placeholder="🔍 예: 봉동읍 구성리 123-4 (지번·도로명)" onkeydown="if(event.key==='Enter'){App.searchManualCandidates();}">
+        <button type="button" onclick="App.searchManualCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
+        <div id="manualSearchResults" class="search-results hidden"></div>
       </div>
 
       <div class="manual-addcol">
@@ -2016,7 +2034,7 @@ const App = {
           return `<div class="manual-parcel-row">
             <div class="mp-info">
               <div class="mp-addr">${m.addr}</div>
-              ${jibun ? `<div class="mp-jibun">${jibun}</div>` : ''}
+              <div class="mp-jibun">${jibun ? jibun+' · ' : ''}${m.coord ? '📍 좌표 확인' : '⚠ 좌표 없음'}</div>
               ${extraVals ? `<div class="mp-extra">${extraVals}</div>` : ''}
             </div>
             <button type="button" onclick="App.removeManualParcel(${i})">삭제</button>
@@ -2041,20 +2059,42 @@ const App = {
     this.manualExtraFields.splice(idx, 1);
     this.renderManualAddCard();
   },
-  addManualParcel(){
-    const addrInput = document.getElementById('manualAddrInput');
-    const addr = addrInput.value.trim();
-    if(!addr){ alert('소재지(주소)를 입력해주세요.'); return; }
-    const bon = document.getElementById('manualBonInput').value.trim();
-    const bu = document.getElementById('manualBuInput').value.trim();
+  async searchManualCandidates(){
+    const input = document.getElementById('manualSearchInput');
+    const text = (input.value || '').trim();
+    if(!text) return;
+    if(!this.hasActiveGeocodeKey()){ alert('지오코딩 API 키가 아직 설정되지 않았어요.'); return; }
+    const box = document.getElementById('manualSearchResults');
+    box.innerHTML = '<div class="search-result-empty">검색 중...</div>';
+    box.classList.remove('hidden');
+    const list = await this.collectParcelCandidates(text);
+    if(list.length===0){ box.innerHTML = '<div class="search-result-empty">결과가 없어요. 다른 표현으로 검색해보세요.</div>'; return; }
+    if(list.length===1){ this.addManualCandidate(list[0]); return; }
+    this._manualCandidates = list;
+    box.innerHTML = list.slice(0,8).map((c,i)=>`
+      <div class="search-result-row" onclick="App.pickManualCandidate(${i})">
+        <div class="sr-addr">${c.name}</div>
+        ${c.addr && c.addr!==c.name ? `<div class="sr-sub">${c.addr}</div>` : ''}
+      </div>`).join('');
+  },
+  pickManualCandidate(i){
+    const c = (this._manualCandidates||[])[i];
+    if(c) this.addManualCandidate(c);
+  },
+  addManualCandidate(c){
+    const addr = c.addr || c.name;
+    if(this.manualParcels.some(m=>m.addr===addr)){ alert('이미 추가된 필지예요.'); return; }
+    const {bon, bu} = parseJibunFromAddr(addr);
     const extra = {};
     this.manualExtraFields.forEach((f,i)=>{
       const el = document.getElementById(`manualExtraInput_${i}`);
       extra[f] = el ? el.value.trim() : '';
     });
-    this.manualParcels.push({addr, bon, bu, extra});
+    this.manualParcels.push({addr, bon, bu, extra, coord: parseImportedCoord(c.lat, c.lng)});
+    this._manualCandidates = null;
     this.renderManualAddCard();
-    document.getElementById('manualAddrInput').focus();
+    const inp = document.getElementById('manualSearchInput');
+    if(inp) inp.focus();
   },
   removeManualParcel(idx){
     this.manualParcels.splice(idx, 1);
@@ -2077,7 +2117,7 @@ const App = {
         villageName: parsed.villageName,
         sigunguKey: parsed.sigunguKey,
         extra: {...m.extra},
-        coord: cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source:'cache'} : null,
+        coord: m.coord ? {lat:m.coord.lat, lng:m.coord.lng, source:'search'} : (cachedCoord ? {lat:cachedCoord.lat, lng:cachedCoord.lng, source:'cache'} : null),
         done: false,
         deleted: false
       };
@@ -2087,12 +2127,17 @@ const App = {
         villages[p.villageKey] = {
           key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
           centroid: ref ? {lat:ref.lat, lng:ref.lng, source:'ref'} : null,
-          collapsed:true, selected:false, legalCode:null, deleted:false
+          collapsed:false, selected:true, legalCode:null, deleted:false
         };
       }
       villages[p.villageKey].parcels.push(p);
     });
     Object.values(villages).forEach(v=> v.parcels.sort((a,b)=>a.sortKey-b.sortKey) );
+    Object.values(villages).forEach(v=>{
+      if(v.centroid) return;
+      const cs = v.parcels.filter(p=>p.coord);
+      if(cs.length) v.centroid = {lat: cs.reduce((t,p)=>t+p.coord.lat,0)/cs.length, lng: cs.reduce((t,p)=>t+p.coord.lng,0)/cs.length, source:'parcels'};
+    });
     this.parcels = parcels;
     this.villages = villages;
     this._startedEmpty = false;
@@ -2136,8 +2181,8 @@ const App = {
   startFromManual(){
     if(this.manualParcels.length===0){ alert('추가된 필지가 없어요.'); return; }
     this.buildParcelsFromManual();
-    this.renderVillageList();
-    this.goScreen('select');
+    this._startedEmpty = true;   // 마을 선택 단계를 건너뛰므로 뒤로가기는 처음 화면으로
+    this.buildRoute();
     this.persistSession();
   },
 
@@ -2369,6 +2414,18 @@ const App = {
     const {total, done} = this.totalStats();
     document.getElementById('bottomProgress').textContent = `${done}/${total} 완료`;
 
+    // 모든 필지에 좌표가 이미 있으면(검색으로 추가/좌표 포함 엑셀) 위치 확인 단계를 숨김
+    const geoBtn = document.getElementById('parcelGeoBtn');
+    if(geoBtn){
+      const act = this.parcels.filter(p=>!this.isParcelDeleted(p));
+      const noCoord = act.filter(p=>!p.coord).length;
+      const allOk = act.length>0 && noCoord===0;
+      geoBtn.classList.toggle('hidden', allOk);
+      const gs = document.getElementById('parcelGeoStatus');
+      if(allOk) gs.textContent = `✓ 필지 ${act.length}개 좌표 확보 완료 — 아래에서 바로 동선을 계산하세요`;
+      else if(act.length>0 && /확인 전|✓/.test(gs.textContent)) gs.textContent = `좌표 없는 필지 ${noCoord}개 — "필지 위치 확인"이 필요해요`;
+    }
+
     const nextCard = document.getElementById('nextCard');
     const next = this.findNextParcel();
     if(next){
@@ -2418,7 +2475,7 @@ const App = {
       const vDone = activeParcels.filter(p=>p.done).length;
       const hasCentroid = !!v.centroid;
       const centroidTag = !v.centroid ? '' :
-        (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : ' · 좌표(GPS)');
+        (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : v.centroid.source==='parcels' ? ' · 좌표(필지평균)' : ' · 좌표(GPS)');
       const parcelsHtml = v.collapsed ? '' : `<div class="parcel-list">${
         v.parcels.map((p, pi)=> this.parcelRowHtml(p, {
           dragScope: 'parcel',
@@ -2473,7 +2530,7 @@ const App = {
       const collapsed = !!v.collapsed;
       const hasCentroid = !!v.centroid;
       const centroidTag = !v.centroid ? '' :
-        (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : ' · 좌표(GPS)');
+        (v.centroid.source==='api' ? ' · 좌표(API)' : v.centroid.source==='ref' ? ' · 좌표(참조표)' : v.centroid.source==='import' ? ' · 좌표(엑셀)' : v.centroid.source==='parcels' ? ' · 좌표(필지평균)' : ' · 좌표(GPS)');
       const parcelsHtml = collapsed ? '' : `<div class="parcel-list">${
         g.items.map(({parcel:p, globalIndex}, itemIdx)=> this.parcelRowHtml(p, {
           dragScope: 'gparcel',
@@ -2690,27 +2747,7 @@ const App = {
     box.innerHTML = `<div class="search-result-empty">검색 중...</div>`;
     box.classList.remove('hidden');
 
-    const exact = await this.geocodeAddress(text);
-    let candidates = [];
-    // addr은 정식 지번 주소(exact.addr)를 우선 사용 — 사용자가 도로명이나 상위 행정구역
-    // 없이 검색해도(예: "OO로 15"만 입력) 마을 분류·지번 파싱이 제대로 되게 하기 위함.
-    // 표시용 이름(name)은 사용자가 입력한 원문 그대로 보여줌.
-    if(exact.ok) candidates.push({name:text, addr: exact.addr || text, lat:exact.lat, lng:exact.lng});
-
-    if(GEOCODE_PROVIDER === 'kakao'){
-      try{
-        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
-        const kw = await placesKeywordSearchJibunRaw(text);
-        if(kw.ok){
-          bumpKakaoQuota(_kakaoKeyIndex);
-          bumpSharedKakaoQuota(_kakaoKeyIndex);
-          this.renderKakaoQuota();
-          kw.list.forEach(item=>{
-            if(!candidates.some(c=>c.lat===item.lat && c.lng===item.lng)) candidates.push(item);
-          });
-        }
-      }catch(e){ /* 키워드검색은 보조 수단이라 실패해도 정확주소 결과만으로 진행 */ }
-    }
+    const candidates = await this.collectParcelCandidates(text);
 
     if(candidates.length===0){
       box.innerHTML = `<div class="search-result-empty">결과가 없어요. 다른 표현으로 검색해보세요.</div>`;
@@ -2722,6 +2759,30 @@ const App = {
       return;
     }
     this.renderAddParcelCandidates(candidates);
+  },
+  // 주소검색(복수 결과) + 키워드검색을 합쳐 지번 주소 후보를 만든다. 홈 화면/하단 검색이 공용으로 씀.
+  async collectParcelCandidates(text){
+    const cands = [];
+    const push = c=>{
+      if(!isFinite(c.lat) || !isFinite(c.lng)) return;
+      if(cands.some(x=> x.addr===c.addr || (Math.abs(x.lat-c.lat)<1e-6 && Math.abs(x.lng-c.lng)<1e-6))) return;
+      cands.push(c);
+    };
+    if(GEOCODE_PROVIDER === 'kakao'){
+      try{
+        await ensureKakaoSdkLoaded(_kakaoKeyIndex);
+        const idx = _kakaoKeyIndex;
+        const a = await geocoderKakaoMultiRaw(text);
+        if(a.ok){ bumpKakaoQuota(idx); bumpSharedKakaoQuota(idx); a.list.forEach(push); }
+        const kw = await placesKeywordSearchJibunRaw(text);
+        if(kw.ok){ bumpKakaoQuota(idx); bumpSharedKakaoQuota(idx); kw.list.forEach(push); }
+        this.renderKakaoQuota();
+      }catch(e){ /* 실패하면 후보 없음으로 처리 */ }
+    } else {
+      const exact = await this.geocodeAddress(text);
+      if(exact.ok) push({name:text, addr:exact.addr||text, lat:exact.lat, lng:exact.lng});
+    }
+    return cands;
   },
   renderAddParcelCandidates(list){
     this._addParcelCandidates = list;
@@ -2774,9 +2835,7 @@ const App = {
     const parsed = parseAddress(addrText);
 
     // 지번(본번/부번) 최대한 추출 — 실패해도 안전하게 빈 값으로 남겨둠(3.3).
-    let bon = '', bu = '';
-    const m = addrText.match(/(\d+)(?:-(\d+))?\s*$/);
-    if(m){ bon = m[1] || ''; bu = m[2] || ''; }
+    const {bon, bu} = parseJibunFromAddr(addrText);
     const jibun = bon ? jibunLabel(bon, bu) : '';
     const sortKey = bon ? jibunSortKey(bon, bu) : 0;
 
@@ -3775,9 +3834,9 @@ const App = {
         legEl.innerHTML = R.legMeta.map((m,k)=>`
           <div class="nav-leg-item">
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
-            <span>${m.label}</span><span class="nav-leg-km">${m.km}km</span>
+            <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">화살표(▲)는 가는 방향이에요. 같은 길을 오가는 구간은 오른쪽 차선으로 나란히 그려져요.</div>`;
+          `<div class="nav-leg-hint">선 위의 번호 원이 구간 번호, 화살표(▲)는 가는 방향이에요. 같은 길을 오가는 구간은 살짝 나란히 그려져요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -3868,7 +3927,7 @@ const App = {
         // 흰 테두리는 전부 맨 아래층(zIndex 1), 색 선은 그 위(2~) — 선이 교차해도 다른 구간의 테두리가
         // 색 선을 덮지 않고, 뒤 구간일수록 위에 그려짐.
         const halo = new kakao.maps.Polyline({
-          path: lls, strokeWeight: 9, strokeColor: '#ffffff', strokeOpacity: 0.92, strokeStyle: 'solid', zIndex: 1
+          path: lls, strokeWeight: 9, strokeColor: '#ffffff', strokeOpacity: 0.95, strokeStyle: 'solid', zIndex: 1
         });
         const main = new kakao.maps.Polyline({
           path: lls, strokeWeight: 5, strokeColor: color, strokeOpacity: 1,
@@ -3929,7 +3988,7 @@ const App = {
     const padLat = (ne.getLat() - sw.getLat()) * 0.1, padLng = (ne.getLng() - sw.getLng()) * 0.1;
     const inView = (lat, lng)=> lat > sw.getLat()-padLat && lat < ne.getLat()+padLat &&
                                 lng > sw.getLng()-padLng && lng < ne.getLng()+padLng;
-    const MAX_ARROWS = 60;
+    const MAX_ARROWS = 24;
     let made = 0;
     for(const leg of R.legs){
       let total = 0;
@@ -3938,6 +3997,31 @@ const App = {
           total += Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
         }
       });
+      // 구간 번호 배지: 구간 길이의 정확히 절반 지점에 "①②③"을 구간 색으로 표시
+      {
+        let acc = 0, half = total/2, placed = false;
+        for(const run of leg.runs){
+          for(let i=1; i<run.offset.length && !placed; i++){
+            const L = Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
+            if(acc + L >= half && L > 0){
+              const t = (half-acc)/L;
+              const lat = run.offset[i-1][0] + (run.offset[i][0]-run.offset[i-1][0])*t;
+              const lng = run.offset[i-1][1] + (run.offset[i][1]-run.offset[i-1][1])*t;
+              if(inView(lat, lng)){
+                const ov = new kakao.maps.CustomOverlay({
+                  position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 9,
+                  content: `<div style="width:22px;height:22px;border-radius:50%;background:${leg.color};color:#fff;border:2px solid #fff;
+                    font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none;">${R.legs.indexOf(leg)+1}</div>`
+                });
+                ov.setMap(_kakaoMap); _kakaoNavRouteArrows.push(ov);
+              }
+              placed = true;
+            }
+            acc += L;
+          }
+          if(placed) break;
+        }
+      }
       if(total < spacing*0.25) continue; // 화면에서 너무 짧은 구간은 화살표 생략
       const margin = Math.min(spacing*0.3, total*0.25);
       const endLimit = total - margin;
@@ -3953,14 +4037,14 @@ const App = {
             const t = (next - walked) / segLen;
             const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
             const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
-            if(made < MAX_ARROWS && inView(lat, lng)){
+            if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - total/2) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
               const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
               // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
               // (예전엔 0x0 박스 안의 SVG를 돌려서 방향에 따라 화살표가 선에서 벗어났음)
               const ov = new kakao.maps.CustomOverlay({
                 position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 8,
-                content: `<div style="width:22px;height:22px;transform:rotate(${bearing.toFixed(1)}deg);pointer-events:none;">
-                  <svg width="22" height="22" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+                content: `<div style="width:16px;height:16px;transform:rotate(${bearing.toFixed(1)}deg);pointer-events:none;">
+                  <svg width="16" height="16" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
                     <path d="M11 1.5 L19 19 L11 14.5 L3 19 Z" fill="${leg.color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" paint-order="stroke"/>
                   </svg></div>`
               });
@@ -3983,7 +4067,7 @@ const App = {
     if(!container) return;
     let el = document.getElementById('navMapLegend');
     const R = this._lastNavRoute;
-    if(!(_navRouteRender && R && R.legMeta && R.legMeta.length)){ if(el) el.remove(); return; }
+    if(true){ if(el) el.remove(); return; }  // 지도 위 범례는 지저분해서 제거(패널 범례만 사용)
     if(!el){
       el = document.createElement('div');
       el.id = 'navMapLegend';
@@ -4021,8 +4105,6 @@ const App = {
       const overlay = new kakao.maps.CustomOverlay({
         position: new kakao.maps.LatLng(lat, lng), yAnchor: 1, xAnchor: 0.5, zIndex: z,
         content: `<div style="display:flex;flex-direction:column;align-items:center;pointer-events:none;">
-          <div style="background:${color};color:#fff;font-size:11px;font-weight:700;padding:2px 7px;max-width:150px;
-            overflow:hidden;text-overflow:ellipsis;border-radius:6px;white-space:nowrap;margin-bottom:2px;box-shadow:0 1px 2px rgba(0,0,0,.35);">${labelText}</div>
           <svg width="28" height="36" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));">
             <path d="M15 0C6.7 0 0 6.7 0 15c0 11.2 15 23 15 23s15-11.8 15-23C30 6.7 23.3 0 15 0z" fill="${color}" stroke="#fff" stroke-width="2"/>
             <circle cx="15" cy="15" r="10" fill="#fff"/>
@@ -4624,7 +4706,8 @@ const App = {
     // ➰ 필지 순서선: 좌표 목록이 같으면 폴리라인을 다시 만들지 않음
     const routeStatusEl = document.getElementById('routeLineStatus');
     let routeSig = null, routePts = null, demoteOrderLine = false;
-    if(showRouteLine){
+    const navVisible = showNavRoute && !!this._lastNavRoute; // 도로 경로가 보이면 직선 순서선은 숨겨 겹침 방지
+    if(showRouteLine && !navVisible){
       if(!hasOrder){
         routeStatusEl.textContent = '➰ 필지 순서선: 아직 필지 방문 순서가 계산되지 않았어요 — 계산 화면에서 "기준별 순서"의 "필지" 또는 "출발지" 버튼을 먼저 눌러주세요.';
         routeStatusEl.classList.remove('hidden');
