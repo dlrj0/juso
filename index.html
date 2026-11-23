@@ -904,13 +904,14 @@ function offsetPolylineRight(pts, dMeters, ref){
     xy.push({x, y, w:(q[2]||0)});
   }
   if(xy.length < 2 || !dMeters) return pts.map(q=>[q[0], q[1]]);
-  // pts[i][2]=1이면 "같은 길을 여러 번 지나는 지점". 그 지점에서만 벌리고, 앞뒤 ±8점에 걸쳐
-  // 서서히 0↔1로 이어지게 해서(겹침 시작/끝에서 선이 튀지 않게) 나머지 구간은 도로 위에 그대로 둠.
-  const R = 8, sm = xy.map((_,i)=>{
-    let t = 0, c = 0;
-    for(let k=Math.max(0,i-R); k<=Math.min(xy.length-1,i+R); k++){ t += xy[k].w; c++; }
-    return Math.min(1, 2*t/c);   // 짧은 겹침도 충분히 벌어지도록 2배 가중(최대 1)
-  });
+  // pts[i][2]=1이면 "같은 길을 여러 번 지나는 지점". 그 지점은 항상 '완전히' 벌리고, 겹침이 시작/끝나는
+  // 곳에서는 거리(m) 기준으로 서서히 0으로 줄여서 선이 튀지 않게 함. (예전엔 앞뒤 점 개수 평균이라
+  // 경유지 왕복 같은 짧은 겹침은 덜 벌어져서 두 선이 거의 붙어 보였음)
+  const RAMP = Math.max(12, Math.abs(dMeters) * 5);
+  const segM = xy.map((q,i)=> i ? Math.hypot(q.x-xy[i-1].x, q.y-xy[i-1].y) : 0);
+  const sm = xy.map(q=> q.w > 0 ? 1 : 0);
+  for(let i=1; i<xy.length; i++) sm[i] = Math.max(sm[i], sm[i-1] - segM[i]/RAMP);
+  for(let i=xy.length-2; i>=0; i--) sm[i] = Math.max(sm[i], sm[i+1] - segM[i+1]/RAMP);
   const nrm = [];
   for(let i=0; i<xy.length-1; i++){
     const dx = xy[i+1].x-xy[i].x, dy = xy[i+1].y-xy[i].y, len = Math.hypot(dx, dy) || 1;
@@ -4281,11 +4282,24 @@ const App = {
       if(flat.length<2 || !summary) return {error:'no-route'};
 
       // 같은 길을 몇 번째로 지나는지(0=처음, 1=두 번째, 2=세 번째 이상) 계산.
-      // 이미 지나온 점(경로상 60m 이상 앞)이 18m 안에 있으면 재방문으로 보고 단계를 올림.
+      // 이미 지나온 점(경로상 60m 이상 앞)이 18m 안에 있고 '진행 방향이 거의 같거나 정반대'일 때만
+      // 재방문으로 보고 단계를 올림. (방향 조건이 없으면 교차로에서 서로 다른 도로가 스치기만 해도
+      // 재방문으로 세어져서, 교차로 근처에 짧은 어두운 조각/큰 화살표가 3겹으로 쌓였음)
       {
         const kx = 111320 * Math.cos(flat[0][0]*Math.PI/180), ky = 110574, CELL = 18;
+        const SAME_ROAD_DEG = 35;      // 방향 차가 이 각도 이내(같은 방향) 또는 180-이 각도 이상(반대 방향)이면 같은 도로
+        const MIN_RETRACE_M = 45;      // 이보다 짧게 겹친 조각은 교차로에서 스친 것으로 보고 무시
+        const TURN_BREAK_DEG = 50;     // 이 각도 이상 꺾이면 겹침 구간을 거기서 끊어서 따로 판단
         const grid = new Map(), cum = [0];
         for(let i=1; i<flat.length; i++) cum[i] = cum[i-1] + Math.hypot((flat[i][1]-flat[i-1][1])*kx, (flat[i][0]-flat[i-1][0])*ky);
+        // sh[i] = i-1 → i 선분의 진행 방향(도). sh[0]은 첫 선분 방향을 빌려 씀.
+        const sh = flat.map((_, i)=>{
+          if(i === 0) return 0;
+          return Math.atan2((flat[i][1]-flat[i-1][1])*kx, (flat[i][0]-flat[i-1][0])*ky) * 180 / Math.PI;
+        });
+        if(flat.length > 1) sh[0] = sh[1];
+        const angDiff = (a, b)=>{ const d = Math.abs(a-b) % 360; return d > 180 ? 360-d : d; };
+        const sameRoad = (a, b)=>{ const d = angDiff(a, b); return d < SAME_ROAD_DEG || d > 180-SAME_ROAD_DEG; };
         for(let i=0; i<flat.length; i++){
           const x = flat[i][1]*kx, y = flat[i][0]*ky;
           const cx = Math.floor(x/CELL), cy = Math.floor(y/CELL);
@@ -4294,7 +4308,7 @@ const App = {
             const arr = grid.get((cx+dx)+','+(cy+dy));
             if(!arr) continue;
             for(const q of arr){
-              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL){ lv = Math.max(lv, Math.min(2, q.lv+1)); ov = true; flat[q.i][4] = 1; }
+              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL && sameRoad(sh[i], sh[q.i])){ lv = Math.max(lv, Math.min(2, q.lv+1)); ov = true; flat[q.i][4] = 1; }
             }
           }
           flat[i][3] = lv;
@@ -4303,6 +4317,22 @@ const App = {
           if(!grid.has(key)) grid.set(key, []);
           grid.get(key).push({x, y, c:cum[i], lv, i});
         }
+        // 짧게 스친 조각 정리: 연속된 '겹침' 구간(급커브에서는 끊음)의 길이가 MIN_RETRACE_M보다 짧으면
+        // 재방문 표시(lv/겹침 플래그)를 지움 → 교차로 한가운데의 어두운 조각·큰 화살표·옆으로 벌어지는 꼬리가 사라짐.
+        const clearShort = (isOn, clear)=>{
+          let s = -1;
+          for(let i=0; i<=flat.length; i++){
+            const on = i < flat.length && isOn(flat[i]);
+            const brk = on && s >= 0 && i > 0 && angDiff(sh[i], sh[i-1]) > TURN_BREAK_DEG;
+            if((!on || brk) && s >= 0){
+              if(cum[i-1] - cum[s] < MIN_RETRACE_M) for(let k=s; k<i; k++) clear(flat[k]);
+              s = -1;
+            }
+            if(on && s < 0) s = i;
+          }
+        };
+        clearShort(p=> p[4] === 1, p=>{ p[4] = 0; });
+        clearShort(p=> p[3] > 0,  p=>{ p[3] = 0; });
       }
 
       // 경유지에서 경로를 잘라 구간을 나눌 꼭짓점 인덱스(경유지 수만큼) 정하기.
@@ -4332,6 +4362,26 @@ const App = {
         }
       }
       const cuts = [0, ...inner, flat.length-1];
+
+      // 경유지가 도로에서 떨어져 있으면 "도로 → 경유지 → 같은 길로 되돌아 나옴"(왕복 가지)이 생김.
+      // 이런 가지는 짧아서 위의 짧은 겹침 정리에 지워지거나 선이 붙어 보이므로, 경유지 점을 기준으로
+      // 앞뒤로 같은 거리만큼 거울처럼 비교해서(가는 점 ↔ 오는 점이 22m 이내) 겹침으로 확실히 표시함.
+      // 오는 쪽은 가는 쪽과 같은 단계로 맞춰서, 구간 색(예: 파랑 ↔ 주황)이 어둡게 변하지 않고 그대로 보이게 함.
+      if(inner.length){
+        const kx2 = 111320 * Math.cos(flat[0][0]*Math.PI/180), ky2 = 110574;
+        const d2 = (u, v)=> Math.hypot((u[1]-v[1])*kx2, (u[0]-v[0])*ky2);
+        inner.forEach(c=>{
+          let j = c, k = c, walked = 0, hit = 0;
+          while(j > 0 && k < flat.length-1 && walked < 600){
+            if(d2(flat[j-1], flat[k+1]) > 22) break;
+            walked += d2(flat[j-1], flat[j]);
+            j--; k++; hit++;
+            flat[j][4] = 1; flat[k][4] = 1;
+            flat[k][3] = flat[j][3] || 0;
+          }
+          if(hit) flat[c][4] = 1;
+        });
+      }
       const legs = [];
       for(let k=0; k<cuts.length-1; k++){
         const s0 = cuts[k], e0 = Math.max(cuts[k+1], s0);
