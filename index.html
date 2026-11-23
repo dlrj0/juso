@@ -906,6 +906,17 @@ function roundNavCorners(runs, r, ref){
     return out;
   });
   const DEG = Math.PI/180;
+  // 완만하게 꺾이는 꼭짓점(3°~35°)을 짧은 두 점으로 바꿔 각진 느낌만 줄임(최대 6m, 옆 선분의 25%까지만 → 도로에서 거의 안 벗어남)
+  const softenGentle = (Q, P, S)=>{
+    const ax = P.x-Q.x, ay = P.y-Q.y, bx = S.x-P.x, by = S.y-P.y;
+    const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+    if(la < 2 || lb < 2) return null;
+    const cross = (ax*by - ay*bx)/(la*lb), dot = (ax*bx + ay*by)/(la*lb);
+    const th = Math.atan2(Math.abs(cross), dot);
+    if(th < 3*DEG || th >= 35*DEG) return null;
+    const t = Math.min(6, 0.25*la, 0.25*lb);
+    return [{x:P.x-ax/la*t, y:P.y-ay/la*t, w:P.w, a:1}, {x:P.x+bx/lb*t, y:P.y+by/lb*t, w:P.w, a:1}];
+  };
   const fillet = (Q, P, S)=>{
     const ax = P.x-Q.x, ay = P.y-Q.y, bx = S.x-P.x, by = S.y-P.y;
     const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
@@ -913,7 +924,7 @@ function roundNavCorners(runs, r, ref){
     const d1x = ax/la, d1y = ay/la, d2x = bx/lb, d2y = by/lb;
     const cross = d1x*d2y - d1y*d2x, dot = d1x*d2x + d1y*d2y;
     const th = Math.atan2(Math.abs(cross), dot);          // 꺾인 각도(0=직진, π=U턴)
-    if(th < 12*DEG || th > 160*DEG) return null;
+    if(th < 35*DEG || th > 160*DEG) return null;   // 완만한 도로 곡선(35° 미만)은 원호로 깎지 않음 → 도로 위에서 벗어나지 않게
     const tn = Math.tan(th/2);
     const t = Math.min(r*tn, 0.45*Math.min(la, lb));      // 원호가 시작/끝나는 거리(옆 선분 길이의 45%까지만)
     const rr = t/tn, sg = cross > 0 ? 1 : -1;             // sg=1 좌회전, -1 우회전
@@ -939,6 +950,63 @@ function roundNavCorners(runs, r, ref){
     A.pop(); arc.forEach(p=>A.push(p));
     B[0] = {x:arc[arc.length-1].x, y:arc[arc.length-1].y, w:PB.w, a:1};
   }
+  // 완만한 구간 평활화 — TMAP 꼭짓점이 도로 바깥쪽에 찍혀 있으면 커브에서 선이 한쪽으로 튀었다가 꺾여 돌아옴.
+  // 급한 모서리(35° 이상)와 이미 둥글게 만든 원호는 그대로 고정해두고, 그 사이 구간만 일정 간격(4m)으로 다시 찍은 뒤
+  // 이웃 점들의 가우시안 평균(σ=12m)으로 부드럽게 펴줌. 양 끝은 고정, 원래 선에서 3m 이상은 벗어나지 않게 제한.
+  const SM_STEP = 4, SM_SIG = 12, SM_MAXD = 3;
+  const smoothChain = (C)=>{
+    if(C.length < 3) return C;
+    const cum = [0];
+    for(let i=1; i<C.length; i++) cum[i] = cum[i-1] + Math.hypot(C[i].x-C[i-1].x, C[i].y-C[i-1].y);
+    const L = cum[cum.length-1];
+    if(L < 8) return C;
+    const m = Math.max(2, Math.round(L/SM_STEP)), h = L/m;
+    const Q = []; let seg = 0;
+    for(let j=0; j<=m; j++){
+      const d = j*h;
+      while(seg < C.length-2 && cum[seg+1] < d) seg++;
+      const len = (cum[seg+1]-cum[seg]) || 1, u = Math.min(1, Math.max(0, (d-cum[seg])/len));
+      Q.push({x: C[seg].x + (C[seg+1].x-C[seg].x)*u, y: C[seg].y + (C[seg+1].y-C[seg].y)*u, w: (u < 0.5 ? C[seg].w : C[seg+1].w)});
+    }
+    const K = Math.ceil(2.5*SM_SIG/h), out = [C[0]];
+    for(let j=1; j<m; j++){
+      let sx = 0, sy = 0, sw = 0;
+      for(let k=Math.max(0, j-K); k<=Math.min(m, j+K); k++){
+        const dd = (k-j)*h, wt = Math.exp(-(dd*dd)/(2*SM_SIG*SM_SIG));
+        sx += Q[k].x*wt; sy += Q[k].y*wt; sw += wt;
+      }
+      let t = Math.min(1, Math.min(j*h, (m-j)*h)/(2*SM_SIG));   // 양 끝 근처는 원래 선에 붙여둠
+      t = t*t*(3-2*t);
+      let dx = (sx/sw - Q[j].x)*t, dy = (sy/sw - Q[j].y)*t;
+      const dl = Math.hypot(dx, dy);
+      if(dl > SM_MAXD){ dx *= SM_MAXD/dl; dy *= SM_MAXD/dl; }
+      out.push({x: Q[j].x+dx, y: Q[j].y+dy, w: Q[j].w});
+    }
+    out.push(C[C.length-1]);
+    return out;
+  };
+  const smoothRun = (P)=>{
+    const n = P.length;
+    if(n < 3) return P;
+    const fixed = new Array(n).fill(false);
+    fixed[0] = fixed[n-1] = true;
+    for(let i=1; i<n-1; i++){
+      if(P[i].a){ fixed[i] = true; continue; }
+      const ax = P[i].x-P[i-1].x, ay = P[i].y-P[i-1].y, bx = P[i+1].x-P[i].x, by = P[i+1].y-P[i].y;
+      const la = Math.hypot(ax, ay), lb = Math.hypot(bx, by);
+      if(la < 0.5 || lb < 0.5) continue;
+      const th = Math.atan2(Math.abs(ax*by-ay*bx), ax*bx+ay*by);
+      if(th >= 35*DEG) fixed[i] = true;
+    }
+    const out = [P[0]]; let s0 = 0;
+    for(let e=1; e<n; e++){
+      if(!fixed[e]) continue;
+      const ch = smoothChain(P.slice(s0, e+1));
+      for(let k=1; k<ch.length; k++) out.push(ch[k]);
+      s0 = e;
+    }
+    return out;
+  };
   // (2) 런 안쪽 모서리
   return R.map(run=>{
     if(run.length < 3) return run.map(p=>[ref.lat + p.y/ky, ref.lng + p.x/kx, p.w]);
@@ -949,7 +1017,7 @@ function roundNavCorners(runs, r, ref){
       if(arc) arc.forEach(p=>out.push(p)); else out.push(run[i]);
     }
     out.push(run[run.length-1]);
-    return out.map(p=>[ref.lat + p.y/ky, ref.lng + p.x/kx, p.w]);
+    return smoothRun(out).map(p=>[ref.lat + p.y/ky, ref.lng + p.x/kx, p.w]);
   });
 }
 // 폴리라인을 진행 방향 "오른쪽"으로 dMeters만큼 평행 이동한 새 좌표열을 돌려줌(한국은 우측통행).
@@ -1206,7 +1274,7 @@ let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라�
 // 길찾기 구간(출발→경유1, 경유1→경유2 ...)별 색. 순서대로 쓰고 모자라면 처음부터 반복.
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
 const NAV_CORNER_RADIUS_PX = 18;   // 좌/우회전 모서리를 둥글게 만드는 반지름(화면 픽셀). 키우면 더 크게 휘고, 0이면 직선 모서리
-const NAV_LANE_OFFSET_PX = 8;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
+const NAV_LANE_OFFSET_PX = 6;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
 const NAV_PASS_WIDTHS = [5, 5, 5];  // 연하고 가늘게 겹치는 방식은 노란 도로 위에서 안 보여서 폐기 — 굵기 동일
 function tintColor(hex, t){   // 색을 검정 쪽으로 어둡게(이름은 유지). t=0.5 → 30%, 0.72 → 43% 어둡게
   const n = parseInt(hex.slice(1), 16), k = 1 - t*0.6;
@@ -4382,9 +4450,9 @@ const App = {
       // 재방문으로 보고 단계를 올림. (방향 조건이 없으면 교차로에서 서로 다른 도로가 스치기만 해도
       // 재방문으로 세어져서, 교차로 근처에 짧은 어두운 조각/큰 화살표가 3겹으로 쌓였음)
       {
-        const kx = 111320 * Math.cos(flat[0][0]*Math.PI/180), ky = 110574, CELL = 18;
-        const SAME_ROAD_DEG = 35;      // 방향 차가 이 각도 이내(같은 방향) 또는 180-이 각도 이상(반대 방향)이면 같은 도로
-        const MIN_RETRACE_M = 45;      // 이보다 짧게 겹친 조각은 교차로에서 스친 것으로 보고 무시
+        const kx = 111320 * Math.cos(flat[0][0]*Math.PI/180), ky = 110574, CELL = 14;
+        const SAME_ROAD_DEG = 25;      // 방향 차가 이 각도 이내(같은 방향) 또는 180-이 각도 이상(반대 방향)이면 같은 도로
+        const MIN_RETRACE_M = 60;      // 이보다 짧게 겹친 조각은 교차로에서 스친 것으로 보고 무시
         const TURN_BREAK_DEG = 50;     // 이 각도 이상 꺾이면 겹침 구간을 거기서 끊어서 따로 판단
         const grid = new Map(), cum = [0];
         for(let i=1; i<flat.length; i++) cum[i] = cum[i-1] + Math.hypot((flat[i][1]-flat[i-1][1])*kx, (flat[i][0]-flat[i-1][0])*ky);
