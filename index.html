@@ -4131,40 +4131,6 @@ const App = {
         }
       }
     }
-
-    // 출발 후 누적 거리 라벨(100m, 200m …): 같은 길을 오가거나 선이 겹쳐도 숫자가 클수록 '나중에 지나는 곳'이라
-    // 어느 선이 먼저이고 어디로 이어지는지 숫자만 따라가면 알 수 있음.
-    {
-      const target = 110 * R.lastMpp;
-      const stepsM = [100, 200, 300, 500, 1000, 2000, 5000];
-      let stepM = stepsM[stepsM.length-1];
-      for(const st of stepsM){ if(st >= target){ stepM = st; break; } }
-      let cum = 0, nextL = stepM, cnt = 0;
-      R.legs.forEach((leg, li)=>{
-        leg.runs.forEach(run=>{
-          const pts = run.offset;
-          for(let i=1; i<pts.length; i++){
-            const seg = Math.hypot((pts[i][1]-pts[i-1][1])*R.kx, (pts[i][0]-pts[i-1][0])*R.ky);
-            if(seg <= 0) continue;
-            while(nextL <= cum + seg){
-              const t = (nextL - cum) / seg;
-              const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
-              const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
-              if(cnt < 40 && inView(lat, lng) && (this._navFocus === null || this._navFocus === li)){
-                const txt = nextL >= 1000 ? (nextL/1000)+'km' : nextL+'m';
-                const ov = new kakao.maps.CustomOverlay({
-                  position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 7,
-                  content: `<div style="padding:0 4px;height:15px;line-height:13px;border-radius:8px;background:#fff;border:1.5px solid ${leg.color};color:#222;font-size:10px;font-weight:700;pointer-events:none;white-space:nowrap;">${txt}</div>`
-                });
-                ov.setMap(_kakaoMap); _kakaoNavRouteArrows.push(ov); cnt++;
-              }
-              nextL += stepM;
-            }
-            cum += seg;
-          }
-        });
-      });
-    }
   },
 
   // 지도 안(좌상단)에 구간 색 범례를 얹음 — 지도 컨테이너 안에 있어서 캡처 사진에도 같이 찍힘.
@@ -4287,7 +4253,6 @@ const App = {
       // flat 원소: [lat, lng, 직선대체여부(0/1)] — 직선대체여부는 그 점으로 들어오는 선분 기준.
       const flat = [];
       const wpTagged = []; // TMAP이 "경유지"라고 표시한 안내점의 flat 인덱스
-      const links = [];   // 링크(LineString)별 {s:flat 시작 인덱스, e:끝 인덱스, n:점 개수, chord, walked} — 경유지 연결선 판별용
       const fallbackDescs = [];
       // 경유지가 산/임야 등 도로에서 너무 멀면, TMAP이 에러 대신 그 구간을 직선(또는 직선을
       // 여러 점으로 잘게 나눈 형태)으로 채워서 응답할 때가 있음. 이런 구간은 실패 처리해서
@@ -4308,6 +4273,16 @@ const App = {
         const coords = g.coordinates || [];
         if(coords.length<2) return;
         const [lng1,lat1] = coords[0], [lng2,lat2] = coords[coords.length-1];
+        // TMAP은 출발/경유/도착 좌표(건물 안 등 도로가 아닌 곳)와 도로 사이를 잇는 "짧고 곧은 연결선"을 응답에 같이 넣음.
+        // 실제로 달리는 길이 아닌데 경로 맨 끝에 붙어 있으면 지도에 도로처럼 그려지고, 경유지 위치로 구간을 자를 때
+        // 그 연결선의 끝(=핀 좌표)이 '가장 가까운 점'으로 잡혀 구간이 엉뚱하게 나뉘었음 → 입력 좌표에 닿은 곧은 연결선은 뺌.
+        {
+          let walkedC = 0;
+          for(let i=1; i<coords.length; i++) walkedC += haversineMeters(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]);
+          const chordC = haversineMeters(lat1, lng1, lat2, lng2);
+          const touchesInput = (la, ln)=> points.some(pp=> haversineMeters(la, ln, pp.lat, pp.lng) < 3);
+          if(coords.length <= 4 && chordC >= 15 && walkedC/chordC < 1.03 && (touchesInput(lat1, lng1) || touchesInput(lat2, lng2))) return;
+        }
         const isFallback = isFabricatedStraightSegment(coords);
         if(isFallback){
           // 이 직선 구간의 양 끝점과 가장 가까운 원래 선택 지점(출발/경유/도착) 이름을 찾아 안내 문구 생성.
@@ -4324,7 +4299,6 @@ const App = {
           const desc = (nameA && nameB && nameA!==nameB) ? `${nameA}↔${nameB}` : (nameA || nameB || '알 수 없는 구간');
           if(!fallbackDescs.includes(desc)) fallbackDescs.push(desc);
         }
-        const linkStart = flat.length;
         coords.forEach((c, ci)=>{
           const lat = c[1], lng = c[0];
           if(ci === 0 && flat.length){
@@ -4333,12 +4307,6 @@ const App = {
           }
           flat.push([lat, lng, isFallback ? 1 : 0]);
         });
-        {
-          let walkedL = 0;
-          for(let i=1; i<coords.length; i++) walkedL += haversineMeters(coords[i-1][1], coords[i-1][0], coords[i][1], coords[i][0]);
-          links.push({s: linkStart, e: flat.length-1, n: coords.length,
-            chord: haversineMeters(lat1, lng1, lat2, lng2), walked: walkedL});
-        }
       });
       if(flat.length<2 || !summary) return {error:'no-route'};
 
@@ -4415,7 +4383,7 @@ const App = {
               if(d < best){ best = d; bestI = i; }
             }
             for(let i=from; i<flat.length; i++){
-              if(haversineMeters(flat[i][0], flat[i][1], w.lat, w.lng) <= best + 10){ bestI = i; break; }
+              if(haversineMeters(flat[i][0], flat[i][1], w.lat, w.lng) <= best + 4){ bestI = i; break; }
             }
             inner.push(bestI);
             from = bestI;
@@ -4423,17 +4391,6 @@ const App = {
         }
       }
       const cuts = [0, ...inner, flat.length-1];
-
-      // 경유지 핀은 도로 위가 아니라 건물/주차장 안인 경우가 많아서, TMAP은 도로에서 핀까지 "짧고 곧은 연결선"
-      // (점 2~3개)을 경로에 넣어줌. 이게 일반 도로와 똑같이 그려지면 '도로로 갔다'고 오해되므로,
-      // 경유지 바로 앞/뒤의 그런 연결선은 점선으로 그려서 "도로가 아니라 경유지까지 이은 선"임을 구분함.
-      inner.forEach(c0=>{
-        links.forEach(L=>{
-          if((L.e === c0 || L.s-1 === c0) && L.n <= 3 && L.chord >= 25 && L.walked/L.chord < 1.03){
-            for(let i=Math.max(0,L.s); i<=L.e; i++) flat[i][2] = 1;
-          }
-        });
-      });
 
       // 경유지가 도로에서 떨어져 있으면 "도로 → 경유지 → 같은 길로 되돌아 나옴"(왕복 가지)이 생김.
       // 이런 가지는 짧아서 위의 짧은 겹침 정리에 지워지거나 선이 붙어 보이므로, 경유지 점을 기준으로
