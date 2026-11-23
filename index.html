@@ -1594,6 +1594,7 @@ const App = {
   // ---- 핀 선택 길찾기 모드 (지도 화면) ----
   navSelectMode: false,
   _navSelectPoints: [],   // [{lat,lng,name}] — 누른 순서 그대로. 1번째=출발지, 마지막=목적지, 그 사이=경유지
+  _navFocus: null,        // null=전체, 숫자=그 구간만 강조
   _lastNavRoute: null,    // {distanceKm, durationMin, hasWaypoints} — 마지막 계산 결과 요약
 
   init(){
@@ -3831,12 +3832,13 @@ const App = {
     if(legEl){
       const R = this._lastNavRoute;
       if(R && R.legMeta && R.legMeta.length){
+        const f = this._navFocus;
         legEl.innerHTML = R.legMeta.map((m,k)=>`
-          <div class="nav-leg-item">
+          <div class="nav-leg-item" onclick="App.setNavFocus(${k})" style="cursor:pointer;padding:6px 4px;border-radius:8px;${f===k?'background:var(--accent-soft);font-weight:700;':''}${f!==null&&f!==k?'opacity:.5;':''}">
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
             <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">선 위의 번호 원이 구간 번호, 화살표(▲)는 가는 방향이에요. 같은 길을 오가는 구간은 살짝 나란히 그려져요.</div>`;
+          `<div class="nav-leg-hint">구간을 탭하면 그 구간만 진하게 보여요. 다시 탭하면 전체 보기예요. 화살표(▲)는 가는 방향이에요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -3885,6 +3887,7 @@ const App = {
       fallbackDescs: r.fallbackDescs || [],
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
+    this._navFocus = null;
     this.clearNavRoutePolylineOnly();
     const showBox = document.getElementById('mapShowNavRoute');
     if(showBox){ showBox.disabled = false; }
@@ -3942,6 +3945,7 @@ const App = {
       R.legs.push({color, runs});
     });
     _navRouteRender = R;
+    this.applyNavFocus();
     this.refreshNavRouteGeometry(true);
     this.updateNavMapLegend();
   },
@@ -3958,6 +3962,35 @@ const App = {
 
   // 지금 줌에서 "차선 간격"이 화면 기준 NAV_LANE_OFFSET_PX가 되도록 선 좌표를 다시 계산하고(줌이
   // 바뀐 경우에만), 현재 화면 안에 보이는 구간에만 방향 화살표를 일정 간격으로 다시 배치함.
+  // 선택한 구간만 굵고 진하게, 나머지는 흐린 회색으로. 번호 원/화살표도 선택 구간에만 표시.
+  setNavFocus(k){
+    this._navFocus = (k === this._navFocus) ? null : k;   // 같은 구간을 다시 누르면 전체 보기
+    this.applyNavFocus();
+    this.renderNavRouteArrows();
+    this.renderNavSelectPanel();
+    const R = _navRouteRender;
+    if(R && this._navFocus !== null && R.legs[this._navFocus] && _kakaoMap){
+      const b = new kakao.maps.LatLngBounds();
+      R.legs[this._navFocus].runs.forEach(run=>run.pts.forEach(q=>b.extend(new kakao.maps.LatLng(q[0], q[1]))));
+      _kakaoMap.setBounds(b);
+    }
+  },
+  applyNavFocus(){
+    const R = _navRouteRender; if(!R) return;
+    const f = this._navFocus;
+    R.legs.forEach((leg, li)=>leg.runs.forEach(run=>{
+      if(f === null){
+        run.halo.setOptions({strokeOpacity:0.95, strokeWeight:9, zIndex:1});
+        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:5, zIndex:2+li});
+      } else if(li === f){
+        run.halo.setOptions({strokeOpacity:1, strokeWeight:12, zIndex:60});
+        run.main.setOptions({strokeColor:leg.color, strokeOpacity:1, strokeWeight:7, zIndex:61});
+      } else {
+        run.halo.setOptions({strokeOpacity:0, zIndex:1});
+        run.main.setOptions({strokeColor:'#9AA0A6', strokeOpacity:0.55, strokeWeight:3, zIndex:2});
+      }
+    }));
+  },
   refreshNavRouteGeometry(force){
     const R = _navRouteRender;
     if(!R || !_kakaoMap) return;
@@ -3991,6 +4024,7 @@ const App = {
     const MAX_ARROWS = 24;
     let made = 0;
     for(const leg of R.legs){
+      if(this._navFocus !== null && R.legs.indexOf(leg) !== this._navFocus) continue;  // 선택한 구간만 번호/화살표 표시
       let total = 0;
       leg.runs.forEach(run=>{
         for(let i=1; i<run.offset.length; i++){
@@ -4108,7 +4142,7 @@ const App = {
           <svg width="28" height="36" viewBox="0 0 30 38" xmlns="http://www.w3.org/2000/svg" style="filter:drop-shadow(0 1px 3px rgba(0,0,0,.5));">
             <path d="M15 0C6.7 0 0 6.7 0 15c0 11.2 15 23 15 23s15-11.8 15-23C30 6.7 23.3 0 15 0z" fill="${color}" stroke="#fff" stroke-width="2"/>
             <circle cx="15" cy="15" r="10" fill="#fff"/>
-            <text x="15" y="19.5" text-anchor="middle" font-size="12" font-weight="700" fill="${color}">${badgeText}</text>
+            <text x="15" y="19" text-anchor="middle" font-size="10.5" font-weight="700" fill="${color}">${badgeText}</text>
           </svg>
         </div>`
       });
@@ -4127,8 +4161,8 @@ const App = {
       let color, badge;
       if(hasStart && hasEnd){ color = '#2B2D42'; badge = '🔁'; }
       else if(hasStart){ color = '#1E8E3E'; badge = '🚩'; }
-      else if(hasEnd){ color = legColor(n-2); badge = '🏁'; }
-      else { color = legColor(g.idx[0]-1); badge = String(g.idx[0]); }
+      else if(hasEnd){ color = '#2B2D42'; badge = '🏁'; }  // 도착 핀은 구간 색과 겹치지 않는 짙은 남색
+      else { color = legColor(g.idx[0]-1); badge = '경'+g.idx[0]; }  // 구간 번호(원)와 헷갈리지 않게 '경유N'으로 표기
       const roles = g.idx.map(roleOf).join('/');
       addPin(g.lat, g.lng, color, badge, `${roles} · ${escName(pts[g.idx[0]].name)}`, (hasStart||hasEnd) ? 12 : 10);
     });
@@ -4470,7 +4504,9 @@ const App = {
     };
     const mapLevel = _kakaoMap.getLevel();
 
-    const showVillages = document.getElementById('mapShowVillages').checked;
+    const _navBox = document.getElementById('mapShowNavRoute');
+    // 길찾기 경로가 그려져 있는 동안엔 마을 라벨을 숨겨서 선·번호를 가리지 않게 함(선택 지우기 하면 다시 보임)
+    const showVillages = document.getElementById('mapShowVillages').checked && !(this._lastNavRoute && _navBox && _navBox.checked);
     const showParcels = document.getElementById('mapShowParcels').checked;
     const showJibunBox = document.getElementById('mapShowJibun');
     const showJibun = showJibunBox ? showJibunBox.checked : true;
