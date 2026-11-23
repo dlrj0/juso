@@ -952,8 +952,8 @@ function roundNavCorners(runs, r, ref){
   }
   // 완만한 구간 평활화 — TMAP 꼭짓점이 도로 바깥쪽에 찍혀 있으면 커브에서 선이 한쪽으로 튀었다가 꺾여 돌아옴.
   // 급한 모서리(35° 이상)와 이미 둥글게 만든 원호는 그대로 고정해두고, 그 사이 구간만 일정 간격(4m)으로 다시 찍은 뒤
-  // 이웃 점들의 가우시안 평균(σ=12m)으로 부드럽게 펴줌. 양 끝은 고정, 원래 선에서 3m 이상은 벗어나지 않게 제한.
-  const SM_STEP = 4, SM_SIG = 12, SM_MAXD = 3;
+  // 이웃 점들의 가우시안 평균(σ=12m)으로 부드럽게 펴줌. 양 끝은 고정, 원래 선에서 6m 이상은 벗어나지 않게 제한.
+  const SM_STEP = 4, SM_SIG = 22, SM_MAXD = 6;
   const smoothChain = (C)=>{
     if(C.length < 3) return C;
     const cum = [0];
@@ -1057,7 +1057,7 @@ function offsetPolylineRight(pts, dMeters, ref){
       if(sl < 1e-3){ nx = a.x; ny = a.y; }               // 완전 U턴: 앞 구간 기준으로만 밀기
       else { nx = sx/sl; ny = sy/sl; scale = 1/Math.max(nx*a.x + ny*a.y, 0.55); } // 모서리가 뾰족해지는 정도 제한
     }
-    const di = dMeters * sm[i] * scale;
+    const di = dMeters * (0.5 + 0.5*sm[i]) * scale;   // 겹침 없는 곳도 우측통행 차선 쪽으로 절반만큼 붙여서, 커브에서 왼쪽으로 쏠려 보이지 않게 함
     out.push([ref.lat + (xy[i].y + ny*di)/ky, ref.lng + (xy[i].x + nx*di)/kx, sm[i]]);
   }
   return out;
