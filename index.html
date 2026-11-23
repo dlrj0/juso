@@ -928,7 +928,7 @@ function offsetPolylineRight(pts, dMeters, ref){
       else { nx = sx/sl; ny = sy/sl; scale = 1/Math.max(nx*a.x + ny*a.y, 0.55); } // 모서리가 뾰족해지는 정도 제한
     }
     const di = dMeters * sm[i] * scale;
-    out.push([ref.lat + (xy[i].y + ny*di)/ky, ref.lng + (xy[i].x + nx*di)/kx]);
+    out.push([ref.lat + (xy[i].y + ny*di)/ky, ref.lng + (xy[i].x + nx*di)/kx, sm[i]]);
   }
   return out;
 }
@@ -1145,10 +1145,9 @@ let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라�
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
 const NAV_LANE_OFFSET_PX = 6;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
 const NAV_PASS_WIDTHS = [5, 5, 5];  // 연하고 가늘게 겹치는 방식은 노란 도로 위에서 안 보여서 폐기 — 굵기 동일
-function tintColor(hex, t){   // (현재 미사용: 연한 색 방식 폐기) 색을 그대로 반환
-  return hex;
-  const n = parseInt(hex.slice(1), 16), m = c => Math.round(c + (255-c)*t);
-  return '#' + [(n>>16)&255, (n>>8)&255, n&255].map(c=>m(c).toString(16).padStart(2,'0')).join('');
+function tintColor(hex, t){   // 색을 검정 쪽으로 어둡게(이름은 유지). t=0.5 → 30%, 0.72 → 43% 어둡게
+  const n = parseInt(hex.slice(1), 16), k = 1 - t*0.6;
+  return '#' + [(n>>16)&255, (n>>8)&255, n&255].map(c=>Math.round(c*k).toString(16).padStart(2,'0')).join('');
 }
 const NAV_ARROW_SPACING_PX = 260; // 화살표는 듬성듬성(방향만 알 수 있게) // 진행 방향 화살표 간격(화면 픽셀)
 let _kakaoUserMarker = null;
@@ -3855,7 +3854,7 @@ const App = {
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
             <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
           </div>`).join('') +
-          `<div class="nav-leg-hint">같은 길을 다시 지나는 곳에서만 오른쪽 차선으로 벌어져 나란히 그려지고, 나머지는 도로 위에 그대로 그려져요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
+          `<div class="nav-leg-hint">같은 길을 다시 지나는 곳에서만 오른쪽 차선으로 벌어져 나란히 그려지고, 나중에 지나는 쪽은 더 어두운 색이에요(밝은 선=먼저, 어두운 선=나중). 겹친 곳은 화살표가 크고 촘촘해요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
       } else {
         legEl.innerHTML = '';
       }
@@ -4039,7 +4038,7 @@ const App = {
     const padLat = (ne.getLat() - sw.getLat()) * 0.1, padLng = (ne.getLng() - sw.getLng()) * 0.1;
     const inView = (lat, lng)=> lat > sw.getLat()-padLat && lat < ne.getLat()+padLat &&
                                 lng > sw.getLng()-padLng && lng < ne.getLng()+padLng;
-    const MAX_ARROWS = 24;
+    const MAX_ARROWS = 70;
     let made = 0;
     for(const leg of R.legs){
       if(this._navFocus !== null && R.legs.indexOf(leg) !== this._navFocus) continue;  // 선택한 구간만 번호/화살표 표시
@@ -4091,12 +4090,13 @@ const App = {
             const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
             if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - total/2) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
               const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
+              const sz = (pts[i][2] > 0.5) ? 20 : 16;   // 오가는 겹침 구간은 방향 화살표를 크게
               // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
               // (예전엔 0x0 박스 안의 SVG를 돌려서 방향에 따라 화살표가 선에서 벗어났음)
               const ov = new kakao.maps.CustomOverlay({
                 position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 8,
-                content: `<div style="width:16px;height:16px;transform:rotate(${bearing.toFixed(1)}deg);pointer-events:none;">
-                  <svg width="16" height="16" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
+                content: `<div style="width:${sz}px;height:${sz}px;transform:rotate(${bearing.toFixed(1)}deg);pointer-events:none;">
+                  <svg width="${sz}" height="${sz}" viewBox="0 0 22 22" xmlns="http://www.w3.org/2000/svg">
                     <path d="M11 1.5 L19 19 L11 14.5 L3 19 Z" fill="${leg.color}" stroke="#fff" stroke-width="2" stroke-linejoin="round" paint-order="stroke"/>
                   </svg></div>`
               });
@@ -4104,7 +4104,7 @@ const App = {
               _kakaoNavRouteArrows.push(ov);
               made++;
             }
-            next += spacing;
+            next += (pts[i][2] > 0.5 ? spacing*0.3 : spacing);   // 겹침 구간은 화살표 간격을 촘촘하게
           }
           walked += segLen;
           if(next > endLimit) break;
@@ -4340,7 +4340,7 @@ const App = {
         for(let i=s0+1; i<=e0; i++){
           distM += haversineMeters(flat[i-1][0], flat[i-1][1], flat[i][0], flat[i][1]);
           const fb = !!flat[i][2];
-          const lv = 0;   // 재방문 단계로 선을 쪼개지 않음(쪼개면 평행선 이음새가 끊김)
+          const lv = flat[i][3] || 0;   // 재방문 단계(0=처음,1=두 번째…)별로 색을 달리 하기 위해 선을 나눔
           if(!cur || cur.fb !== fb || cur.lv !== lv){
             cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1], flat[i-1][4]||0]]};
             runs.push(cur);
