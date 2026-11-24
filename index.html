@@ -431,24 +431,26 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-sheet{position:fixed;left:0;right:0;bottom:var(--sticky-h,66px);z-index:19;background:var(--surface);
     border-top:1px solid var(--border);border-radius:14px 14px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.14);}
   .nav-sheet-in{max-width:640px;margin:0 auto;}
-  .nav-sheet-head{display:flex;align-items:center;gap:8px;padding:6px 12px;min-height:42px;cursor:pointer;user-select:none;-webkit-user-select:none;}
+  .nav-sheet-head{display:flex;align-items:center;gap:8px;padding:4px 12px;min-height:38px;cursor:pointer;user-select:none;-webkit-user-select:none;}
   .nav-sheet-title{font-size:13px;font-weight:800;white-space:nowrap;}
   .nav-sheet-head .nav-summary{flex:1;min-width:0;margin-left:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .nav-sheet-caret{flex-shrink:0;width:26px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:8px;
     background:var(--surface-2);color:var(--text-mute);font-size:13px;transition:transform .15s;}
   .nav-sheet.collapsed .nav-sheet-caret{transform:rotate(180deg);}
-  .nav-sheet-body{padding:0 12px 10px;max-height:min(34vh,300px);overflow-y:auto;display:flex;flex-direction:column;gap:8px;}
+  .nav-sheet-body{padding:0 12px 8px;max-height:min(30vh,220px);overflow-y:auto;display:flex;flex-direction:column;gap:6px;}
   .nav-sheet.collapsed .nav-sheet-body{display:none;}
   body.map-capturing .nav-sheet{display:none !important;}
-  .nav-list{display:flex;flex-direction:column;gap:5px;}
-  .nav-row{display:flex;align-items:center;gap:8px;min-height:36px;padding:3px 4px 3px 7px;border:1px solid var(--border);border-radius:10px;background:#fff;}
-  .nav-row-no{width:20px;height:20px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
-    font-style:normal;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;}
-  .nav-row-role{width:38px;flex-shrink:0;font-size:11px;color:var(--text-mute);font-weight:700;}
-  .nav-row-name{flex:1;min-width:0;font-weight:700;font-family:var(--mono);font-size:12.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .nav-row button{flex-shrink:0;border:none;background:transparent;color:var(--text-mute);font-size:17px;line-height:1;cursor:pointer;
-    width:30px;height:30px;border-radius:8px;padding:0;}
+  /* 목록은 한 줄에 여러 개가 이어 붙는 작은 칩(줄바꿈) — 필지 번호만 짧게 나오므로 세로로 쌓으면 공간 낭비 */
+  .nav-list{display:flex;flex-wrap:wrap;align-items:center;gap:4px 3px;}
+  .nav-row{display:inline-flex;align-items:center;gap:4px;height:26px;padding:0 2px 0 3px;border:1px solid var(--border);border-radius:100px;background:#fff;max-width:100%;}
+  .nav-row-no{width:18px;height:18px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-style:normal;font-size:10.5px;font-weight:800;color:#fff;flex-shrink:0;}
+  .nav-row-role{font-size:10.5px;color:var(--text-mute);font-weight:700;white-space:nowrap;}
+  .nav-row-name{min-width:0;max-width:130px;font-weight:700;font-family:var(--mono);font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .nav-row button{flex-shrink:0;border:none;background:transparent;color:var(--text-mute);font-size:15px;line-height:1;cursor:pointer;
+    width:20px;height:20px;border-radius:50%;padding:0;}
   .nav-row button:hover,.nav-row button:active{background:var(--surface-2);color:#ff5a3c;}
+  .nav-row-arrow{color:var(--text-mute);font-size:11px;flex-shrink:0;}
   .nav-empty{font-size:12px;color:var(--text-mute);}
   .nav-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .nav-btn{height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
@@ -4145,7 +4147,7 @@ const App = {
       const bg = (i)=> i===0 ? '#1E8E3E' : (i===last ? '#2B2D42' : NAV_LEG_COLORS[(i-1) % NAV_LEG_COLORS.length]);
       const role = (i)=> i===0 ? '출발' : (i===last ? '도착' : `경유${i}`);
       chipsEl.innerHTML = pts.map((p,i)=>`
-        <div class="nav-row"><i class="nav-row-no" style="background:${bg(i)}">${i+1}</i><span class="nav-row-role">${role(i)}</span><span class="nav-row-name" title="${esc(p.name)}">${esc(shortName(p.name))}</span><button type="button" title="이 핀 빼기" onclick="App.removeNavSelectPoint(${i})">×</button></div>
+        ${i ? '<span class="nav-row-arrow">›</span>' : ''}<span class="nav-row"><i class="nav-row-no" style="background:${bg(i)}">${i+1}</i><span class="nav-row-role">${role(i)}</span><span class="nav-row-name" title="${esc(p.name)}">${esc(shortName(p.name))}</span><button type="button" title="이 핀 빼기" onclick="App.removeNavSelectPoint(${i})">×</button></span>
       `).join('');
     }
     const cntEl = document.getElementById('navSheetCount');
