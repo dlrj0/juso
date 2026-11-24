@@ -407,14 +407,22 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-map-legend .nml-row{display:flex;align-items:center;gap:6px;white-space:nowrap;}
   .nav-map-legend .nml-sw{width:18px;height:5px;border-radius:3px;flex-shrink:0;}
   .nav-map-legend .nml-more{color:#666;font-size:10.5px;}
+  /* ---- 지도 도구 줄 / 마을 칩 / 전체보기 ---- */
+  .map-tools{flex-wrap:wrap;gap:6px;margin-top:8px;align-items:center;}
+  .tgl{display:inline-flex;cursor:pointer;}
+  .tgl input{position:absolute;opacity:0;pointer-events:none;width:0;height:0;}
+  .tgl span{display:inline-flex;align-items:center;height:28px;padding:0 11px;border-radius:100px;border:1px solid var(--border);
+    background:var(--surface);font-size:12.5px;font-weight:600;color:var(--text-mute);transition:background .12s,color .12s,border-color .12s;}
+  .tgl input:checked + span{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-dark);}
+  .tgl input:disabled + span{opacity:.4;cursor:default;}
+  .map-status-select{height:28px;border:1px solid var(--border);border-radius:100px;padding:0 8px;font-size:12.5px;font-weight:600;background:var(--surface);color:var(--text);}
+  .village-legend .vl-all{font-weight:800;}
+  .village-legend .vl-all.part{background:var(--accent-soft);border-color:var(--accent);}
+  .village-legend .vl-all:not(.off):not(.part){background:var(--accent-soft);border-color:var(--accent);color:var(--accent-dark);}
+  #mapFitBtn{position:absolute;z-index:60;width:42px;height:42px;border-radius:8px;border:1px solid #c9ced6;background:#fff;color:#333;
+    display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  #mapFitBtn:active{background:#eef1f4;}
   /* ---- 길찾기(핀 선택) 컴팩트 UI ---- */
-  .nav-bar{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:30px;}
-  .nav-pill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px 0 9px;border-radius:100px;
-    border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12.5px;font-weight:700;
-    cursor:pointer;transition:background .15s,border-color .15s,color .15s;}
-  .nav-pill:hover{border-color:#ff5a3c;}
-  .nav-pill.active{background:#ff5a3c;border-color:#ff5a3c;color:#fff;box-shadow:0 1px 4px rgba(255,90,60,.35);}
-  .nav-bar-hint{font-size:11.5px;color:var(--text-mute);line-height:1.3;}
   .nav-card{margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);
     display:flex;flex-direction:column;gap:7px;}
   .nav-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
@@ -540,17 +548,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 
   <!-- SCREEN 1: UPLOAD -->
   <div id="screen-upload">
-    <div class="dropzone" id="dropzone">
+    <div class="dropzone" id="dropzone" title="주소를 마을별로 정리하고 방문 순서까지 계산해요">
       <div class="icon">📄</div>
       <h2>주소 엑셀 업로드</h2>
-      <p>소재지(주소) 컬럼이 있는 엑셀이라면 무엇이든 올려보세요.<br>주소를 마을 단위로 자동 정리하고 방문 순서까지 계산해드려요.</p>
+      <p>소재지(주소) 열이 있는 엑셀·CSV</p>
       <label class="filebtn">파일 선택<input type="file" id="fileInput" accept=".xlsx,.xls,.csv" style="display:none;"></label>
     </div>
-    <button type="button" class="ghost-btn" id="startEmptyBtn" onclick="App.startEmpty()" style="margin-top:12px;">📋 파일 없이 바로 계산 화면으로</button>
-    <p class="hint" style="margin:6px 2px 0;text-align:center;">계산/지도 화면 아래 검색창에서 필지를 하나씩 추가할 수 있어요.</p>
+    <button type="button" class="ghost-btn" id="startEmptyBtn" onclick="App.startEmpty()" style="margin-top:12px;" title="파일 없이 시작 — 화면 아래 검색창에서 필지를 하나씩 추가해요">📋 파일 없이 시작</button>
     <div class="card" id="manualAddCard">
-      <h3 style="font-size:15px;margin-bottom:4px;">필지 직접 추가</h3>
-      <p class="hint" style="margin-top:0;">주소를 검색해서 고르면 본번·부번과 좌표까지 바로 채워져요. 별도의 위치 확인 없이 곧장 동선 계산으로 넘어갈 수 있어요.</p>
+      <h3 style="font-size:15px;margin-bottom:8px;" title="주소를 검색해 고르면 본번·부번·좌표가 자동으로 채워져요">필지 직접 추가</h3>
 
       <div id="manualParcelForm"></div>
 
@@ -570,14 +576,12 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   <div id="screen-mapping" class="hidden">
     <span class="backlink" onclick="App.goScreen('upload')">← 다른 파일 올리기</span>
     <div class="card">
-      <h3 style="font-size:15px;margin-bottom:4px;">컬럼 확인</h3>
-      <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 4px;">자동으로 찾았어요. 다르면 직접 골라주세요. (법정동코드가 있으면, 좌표 없이도 마을 순서를 정렬하는 데 참고용으로 쓸 수 있어요. 완료여부 열이 있는 파일을 올리면 완료 상태를 그대로 불러와요)</p>
+      <h3 style="font-size:15px;margin-bottom:4px;" title="법정동코드는 좌표 없이 마을 순서를 정렬할 때 참고해요. 완료여부 열이 있으면 완료 상태를 그대로 불러와요">컬럼 확인 <span style="font-weight:400;font-size:12.5px;color:var(--text-mute);">자동 인식 · 다르면 직접 선택</span></h3>
       <div id="mappingFields"></div>
       <div id="mappingCoordHint" class="hint" style="display:none;margin-top:6px;"></div>
     </div>
     <div class="card">
-      <h3 style="font-size:14.5px;margin-bottom:2px;">추가로 표시/내보낼 열</h3>
-      <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 8px;">체크한 열은 각 필지 아래에 같이 보이고, 엑셀로 내보낼 때도 고를 수 있어요. 처음엔 전부 선택 해제 상태예요 — 필요한 열만 직접 체크해주세요.</p>
+      <h3 style="font-size:14.5px;margin-bottom:8px;" title="체크한 열은 각 필지 아래에 표시되고 엑셀 내보내기에서도 고를 수 있어요">추가로 표시할 열 <span style="font-weight:400;font-size:12.5px;color:var(--text-mute);">(선택)</span></h3>
       <div id="mappingExtraFields"></div>
     </div>
     <button class="primary-btn btn-highlight" id="mappingConfirmBtn" onclick="App.confirmMapping()">필지 목록 만들기</button>
@@ -635,10 +639,10 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div class="gps-status" id="startPointStatus">출발지가 설정되지 않았어요</div>
 
-      <label class="fieldlabel" style="margin-top:14px;">기준별 동선 계산(필수)</label>
+      <label class="fieldlabel" style="margin-top:14px;">동선 계산 기준 <span style="font-weight:400;color:var(--text-mute);">(필수)</span></label>
       <div class="gps-row" style="margin-top:6px;">
-        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(false)">필지</button>
-        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(true)">출발지</button>
+        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(false)" title="첫 필지에서 가까운 순서로 계산">필지</button>
+        <button class="gps-btn btn-highlight" onclick="App.computeFlatOrder(true)" title="설정한 출발지에서 가까운 순서로 계산">출발지</button>
       </div>
     </div>
 
@@ -658,31 +662,17 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <span class="backlink" onclick="App.goScreen('route')">← 계산 화면으로</span>
 
     <div id="mapExtraControls">
-      <div class="gps-row" style="flex-wrap:wrap;gap:12px;margin-top:8px;">
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers(false)"> 🏘️ 마을
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers(false)"> 📍 필지
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers(false)"> ➰ 필지 순서선(직선)
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers(false)"> 🛣️ 선택 구간 길찾기(도로)
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          <input type="checkbox" id="mapShowJibun" checked onchange="App.renderMapMarkers(false)"> 🔖 지번 표시
-        </label>
-        <label style="display:flex;align-items:center;gap:5px;font-size:13px;">
-          완료여부
-          <select id="mapStatusFilter" onchange="App.renderMapMarkers(false)"
-            style="border:1px solid var(--border);border-radius:8px;padding:4px 6px;font-size:12.5px;background:#fff;">
-            <option value="all">전체</option>
-            <option value="undone">미완료만</option>
-            <option value="done">완료만</option>
-          </select>
-        </label>
+      <div class="gps-row map-tools">
+        <label class="tgl"><input type="checkbox" id="mapShowVillages" checked onchange="App.renderMapMarkers(false)"><span>🏘️ 마을</span></label>
+        <label class="tgl"><input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers(false)"><span>📍 필지</span></label>
+        <label class="tgl"><input type="checkbox" id="mapShowJibun" checked onchange="App.renderMapMarkers(false)"><span>🔖 지번</span></label>
+        <label class="tgl"><input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers(false)"><span>➰ 순서선</span></label>
+        <label class="tgl"><input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers(false)"><span>🛣️ 도로경로</span></label>
+        <select id="mapStatusFilter" class="map-status-select" onchange="App.renderMapMarkers(false)" title="완료여부">
+          <option value="all">전체</option>
+          <option value="undone">미완료</option>
+          <option value="done">완료</option>
+        </select>
         <div class="pin-scale-control">
           <span class="pin-scale-target-label" id="mapScaleTargetLabel" onclick="App.toggleScaleTargetPicker()" title="탭하면 핀/라벨/점선 중 조절할 항목을 고를 수 있어요">📍 핀 크기 ▾</span>
           <button type="button" class="pin-scale-btn" onclick="App.adjustMapScale(-1)" title="작게">−</button>
@@ -698,10 +688,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div class="gps-status hidden" id="routeLineStatus"></div>
 
-      <div class="nav-bar">
-        <button type="button" id="navSelectModeBtn" class="nav-pill" onclick="App.toggleNavSelectMode()" title="켜고 필지 핀을 출발 → 경유 → 도착 순서로 누르세요"><span>🧭</span><span id="navSelectModeLabel">길찾기</span></button>
-        <span class="nav-bar-hint" id="navSelectHint">핀을 순서대로 눌러 경로 만들기</span>
-      </div>
       <div id="navSelectPanel" class="nav-card hidden">
         <div id="navSelectChips" class="nav-chips"></div>
         <div class="nav-actions">
@@ -713,13 +699,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
         <details id="navDetails" class="nav-details hidden"><summary id="navDetailsSummary">자세히</summary><div id="navDetailText" class="nav-detail-text"></div></details>
       </div>
 
-      <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
-        <button type="button" onclick="App.setAllVillagesMapVisible(true)">마을 전체 켜기</button>
-        <button type="button" onclick="App.setAllVillagesMapVisible(false)">마을 전체 끄기</button>
-        <button type="button" onclick="App.fitMapToVisible()" title="지금 켜져있는 핀들이 다 보이도록 확대/축소를 맞춰줘요">🔎 전체보기</button>
-      </div>
       <div class="village-legend hidden" id="mapVillageLegend"></div>
-      <p class="hint hidden" id="mapLegendHint" style="margin:0 0 6px;">마을명을 탭하면 그 마을 핀만 켜고 끌 수 있어요. "마을 전체 켜기/끄기"로 한 번에 바꿀 수도 있어요. 토글을 바꿔도 지도 확대/이동 상태는 그대로 유지되고, "전체보기"를 누르면 그때만 화면에 맞춰 다시 맞춰져요.</p>
     </div>
 
     <div id="mapFrame" title="테두리(상·하·좌·우·모서리)를 끌어 지도 크기를 바꿔요 — 폭은 항상 가운데 기준. 두 번 탭하면 기본 크기">
@@ -729,7 +709,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <div class="mrh mrh-sw" data-dir="sw"></div><div class="mrh mrh-se" data-dir="se"></div>
       <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
     </div>
-    <p class="hint" id="mapFocusHint" style="margin-top:6px;">🧭 길찾기를 켜고 핀을 출발 → 경유 → 도착 순서로 눌러보세요. 경유지는 구간별로 따로 계산해요.</p>
   </div>
 
 </div>
@@ -738,13 +717,11 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div id="settingsModal" class="modal hidden">
   <div class="modal-card">
     <h3>설정</h3>
-    <p class="hint">이 브라우저에만 저장돼요.</p>
 
     <label class="fieldlabel">카카오 지오코딩 사용량</label>
     <div id="kakaoQuotaBox" class="hint" style="font-family:var(--mono);"></div>
 
     <label class="fieldlabel" style="margin-top:14px;">길찾기(TMAP) 키 <span style="font-weight:400;color:var(--text-mute);">— 선택</span></label>
-    <p class="hint">비워두면 기본 키로 바로 동작해요. 사용량이 부족할 때만 직접 키를 넣으세요.</p>
     <input type="text" id="navApiKeyInput" placeholder="비워두면 기본 키 사용" style="width:100%;box-sizing:border-box;padding:9px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px;font-family:var(--mono);">
     <div class="row-btns" style="margin-top:6px;">
       <button onclick="App.saveNavApiKeyFromInput()">저장</button>
@@ -752,8 +729,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     </div>
     <div id="navQuotaBox" class="hint" style="font-family:var(--mono);"></div>
 
-    <label class="fieldlabel" style="margin-top:14px;">마을 좌표 참조표</label>
-    <p class="hint">찾은 마을 좌표를 저장해서 다음엔 다시 안 찾아요. 동료와 파일로 주고받을 수 있어요.</p>
+    <label class="fieldlabel" style="margin-top:14px;" title="찾은 마을 좌표를 저장해 다음엔 다시 찾지 않아요. 파일로 동료와 주고받을 수 있어요">마을 좌표 참조표</label>
     <div class="row-btns">
       <button onclick="App.importCoordRef()">불러오기</button>
       <button onclick="App.exportCoordRef()">내보내기</button>
@@ -762,11 +738,10 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <div id="coordRefCount" class="hint"></div>
 
     <label class="fieldlabel" style="margin-top:16px;">저장된 데이터</label>
-    <p class="hint">세션 저장소는 탭을 닫으면 지워지고, 로컬 저장소는 직접 지우기 전까지 남아있어요.</p>
 
     <div class="storage-group">
       <div class="storage-group-head">
-        <span>🗂️ 로컬 저장소</span>
+        <span title="직접 지우기 전까지 남아요">🗂️ 로컬 저장소</span>
         <span id="localStorageTotal" class="storage-total"></span>
       </div>
       <div id="localStorageList"></div>
@@ -775,7 +750,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 
     <div class="storage-group">
       <div class="storage-group-head">
-        <span>⏳ 세션 저장소</span>
+        <span title="탭을 닫으면 지워져요">⏳ 세션 저장소</span>
         <span id="sessionStorageTotal" class="storage-total"></span>
       </div>
       <div id="sessionStorageList"></div>
@@ -790,7 +765,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div id="exportModal" class="modal hidden">
   <div class="modal-card">
     <h3>내보낼 항목 선택</h3>
-    <p class="hint"><b>순서·마을·시군구·소재지·본번·부번·완료여부·위도·경도</b>는 항상 포함돼요(위치 확인이 끝난 필지/마을만 좌표가 채워져요). 이 엑셀을 나중에 다시 업로드하면 좌표를 다시 계산할 필요 없이 바로 지도를 볼 수 있어요. 아래 항목은 필요한 것만 선택하세요 — 선택하지 않은 정보는 내보낸 엑셀 파일에 들어가지 않습니다.</p>
+    <p class="hint" title="이 엑셀을 다시 업로드하면 좌표를 다시 계산하지 않고 바로 지도를 볼 수 있어요. 위치 확인이 끝난 필지/마을만 좌표가 채워져요"><b>순서·마을·시군구·소재지·본번·부번·완료여부·위도·경도</b>는 항상 포함돼요.</p>
     <div id="exportColChecks"></div>
     <button class="primary-btn" onclick="App.doExport()">이 항목으로 내보내기</button>
     <button class="ghost-btn" onclick="App.closeExportModal()">취소</button>
@@ -811,10 +786,10 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <button type="button" id="navCopyBtn" onclick="App.copyNavAddress()">복사</button>
     </div>
     <div class="nav-app-list">
-      <button type="button" onclick="App.launchNav('kakao')"><span class="navicon">🟡</span><span class="navtxt">카카오맵<span class="navnote">앱 있으면 앱으로, 없으면 웹으로 열려요</span></span></button>
-      <button type="button" onclick="App.launchNav('google')"><span class="navicon">🌐</span><span class="navtxt">구글지도<span class="navnote">앱 있으면 앱으로, 없으면 웹으로 열려요</span></span></button>
-      <button type="button" onclick="App.launchNav('naver')"><span class="navicon">🟢</span><span class="navtxt">네이버지도<span class="navnote">네이버지도 앱이 설치돼 있어야 열려요</span></span></button>
-      <button type="button" onclick="App.launchNav('tmap')"><span class="navicon">🔵</span><span class="navtxt">티맵<span class="navnote">티맵 앱이 설치돼 있어야 열려요</span></span></button>
+      <button type="button" onclick="App.launchNav('kakao')"><span class="navicon">🟡</span><span class="navtxt">카카오맵</span></button>
+      <button type="button" onclick="App.launchNav('google')"><span class="navicon">🌐</span><span class="navtxt">구글지도</span></button>
+      <button type="button" onclick="App.launchNav('naver')"><span class="navicon">🟢</span><span class="navtxt">네이버지도<span class="navnote">앱 필요</span></span></button>
+      <button type="button" onclick="App.launchNav('tmap')"><span class="navicon">🔵</span><span class="navtxt">티맵<span class="navnote">앱 필요</span></span></button>
     </div>
     <button class="ghost-btn" style="margin-top:10px;width:100%;" onclick="App.closeNavModal()">닫기</button>
   </div>
@@ -824,7 +799,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div id="inquiryModal" class="modal hidden" onclick="if(event.target===this) App.closeInquiry()">
   <div class="modal-card">
     <h3>문의하기</h3>
-    <p class="hint" style="margin:2px 0 10px;">불편한 점이나 요청사항을 적어주세요. 확인해서 최대한 반영해드릴게요(답장은 못 받아요).</p>
+    <p class="hint" style="margin:2px 0 10px;">불편한 점·요청사항 (답장은 드리지 못해요)</p>
     <textarea id="inquiryText" rows="5" maxlength="2000"
       style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical;"
       placeholder="예: OO 화면에서 OO이 안 돼요"></textarea>
@@ -861,6 +836,13 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <circle cx="12" cy="12" r="3" fill="currentColor"/>
       <path d="M12 2V5.5M12 18.5V22M22 12H18.5M5.5 12H2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
       <circle cx="12" cy="12" r="7.5" stroke="currentColor" stroke-width="1.8"/>
+    </svg>
+  </button>
+  <button class="fab-btn hidden" id="fabNavBtn" onclick="App.toggleNavSelectMode()" title="길찾기">
+    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="22" height="22">
+      <circle cx="5" cy="19" r="2.3" stroke="currentColor" stroke-width="1.8"/>
+      <circle cx="19" cy="5" r="2.3" fill="currentColor"/>
+      <path d="M7.3 19H12C16.2 19 16.2 12 12 12C7.8 12 7.8 5 12 5H16.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
     </svg>
   </button>
   <button class="fab-btn" id="fabScrollBtn" onclick="App.handleFabScroll()" title="스크롤 이동">▼</button>
@@ -1937,8 +1919,7 @@ const App = {
     const box = document.getElementById('sheetPickerBox');
     box.innerHTML = `
       <div class="card">
-        <h3 style="font-size:15px;margin-bottom:4px;">시트가 ${names.length}개예요</h3>
-        <p style="font-size:12.5px;color:var(--text-mute);margin:0 0 10px;">'소재지' 열이 있어 보이는 시트를 자동으로 골랐어요. 다르면 바꿔주세요.</p>
+        <h3 style="font-size:15px;margin-bottom:10px;" title="'소재지' 열이 있는 시트를 자동으로 골랐어요">시트 선택 (${names.length}개)</h3>
         <select class="sigungu-select" style="width:100%;" onchange="App.pendingSheet=this.value">
           ${names.map(n=>`<option value="${n}" ${n===bestName?'selected':''}>${n}</option>`).join('')}
         </select>
@@ -2040,8 +2021,8 @@ const App = {
     if(hasParcelCoords || hasVillageCoords){
       coordHint.style.display = '';
       coordHint.textContent = hasParcelCoords
-        ? '✓ 이 파일에 이미 계산된 좌표(위도/경도)가 있어요 — 좌표 재계산 없이 바로 지도를 쓸 수 있어요.'
-        : '✓ 이 파일에 마을 위치 좌표가 있어요 — 마을 지도는 바로 쓸 수 있어요(필지별 좌표는 없어서 필지 지오코딩은 따로 해야 해요).';
+        ? '✓ 좌표가 이미 있어요 — 위치 확인 없이 바로 지도를 쓸 수 있어요'
+        : '✓ 마을 좌표만 있어요 — 필지 위치는 따로 확인해야 해요';
     } else {
       coordHint.style.display = 'none';
     }
@@ -2149,7 +2130,7 @@ const App = {
         villages[p.villageKey] = {
           key:p.villageKey, name:p.villageName, sigunguKey:p.sigunguKey, parcels:[],
           centroid,
-          collapsed:true, selected:false,
+          collapsed:true, selected:true,
           legalCode: codeVal ? String(codeVal) : null,
           deleted: false
         };
@@ -2168,7 +2149,6 @@ const App = {
   renderManualAddCard(){
     const form = document.getElementById('manualParcelForm');
     let html = `
-      <label class="fieldlabel" style="margin-top:14px;">주소 검색해서 추가</label>
       <div class="searchbar" style="position:relative;">
         <input type="text" id="manualSearchInput" placeholder="🔍 예: 봉동읍 구성리 123-4 (지번·도로명)" onkeydown="if(event.key==='Enter'){App.searchManualCandidates();}">
         <button type="button" onclick="App.searchManualCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
@@ -2176,7 +2156,7 @@ const App = {
       </div>
 
       <div class="manual-addcol">
-        <label class="fieldlabel" style="margin-top:0;">열 추가 <span style="font-weight:400;color:var(--text-mute);">(선택 — 소유자명, 메모 등 같이 기록할 항목의 이름)</span></label>
+        <label class="fieldlabel" style="margin-top:0;" title="소유자명, 메모처럼 함께 기록할 항목 이름">열 추가 <span style="font-weight:400;color:var(--text-mute);">(선택)</span></label>
         <div class="searchbar" style="margin-bottom:2px;">
           <input type="text" id="manualExtraLabelInput" placeholder="새 열 이름 입력 후 추가" onkeydown="if(event.key==='Enter'){event.preventDefault();App.addManualExtraField();}">
           <button onclick="App.addManualExtraField()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">추가</button>
@@ -2378,6 +2358,9 @@ const App = {
     if(gpsBtn) gpsBtn.classList.toggle('hidden', name!=='map');
     const screenshotBtn = document.getElementById('fabScreenshotBtn');
     if(screenshotBtn) screenshotBtn.classList.toggle('hidden', name!=='map');
+    const navBtn = document.getElementById('fabNavBtn');
+    if(navBtn) navBtn.classList.toggle('hidden', name!=='map');
+    if(name!=='map' && this.navSelectMode) this.setNavSelectMode(false);
     // 지도유형(일반/항공)·전체화면 버튼은 지도 화면에서만 쓰므로 그때만 보이게 함.
     const mapTypeBtn = document.getElementById('fabMapTypeBtn');
     if(mapTypeBtn) mapTypeBtn.classList.toggle('hidden', name!=='map');
@@ -2603,7 +2586,7 @@ const App = {
         <div class="addr">${next.parcel.addr}</div>
         <div class="jibun">${next.parcel.jibun ? '지번 '+next.parcel.jibun : ''}</div>`;
     } else if(total===0){
-      nextCard.innerHTML = `<div class="eyebrow">시작하기</div><div class="addr">아직 필지가 없어요</div><div class="jibun">하단 검색창에서 주소로 필지를 추가해보세요</div>`;
+      nextCard.innerHTML = `<div class="eyebrow">시작하기</div><div class="addr">아직 필지가 없어요</div><div class="jibun">아래 검색창에서 필지를 추가하세요</div>`;
     } else {
       nextCard.innerHTML = `<div class="eyebrow">진행상황</div><div class="done-all">✓ 선택한 필지를 모두 조사했어요</div>`;
     }
@@ -2635,7 +2618,7 @@ const App = {
     }
 
     if(this.villageOrder.length===0){
-      list.innerHTML = `<div class="empty-note">아직 추가된 필지가 없어요.<br>하단의 🔍 주소 검색창에서 필지를 검색해 추가해보세요.<br>(지도 화면에서도 같은 방식으로 추가할 수 있어요)</div>`;
+      list.innerHTML = `<div class="empty-note">필지가 없어요. 하단 🔍 검색창에서 추가하세요.</div>`;
       return;
     }
     list.innerHTML = this.viewSwitchHtml() + this.villageOrder.map((key, i)=>{
@@ -2725,7 +2708,7 @@ const App = {
           })}
           ${parcelsHtml}
         </div>`;
-    }).join('') + `<p class="hint" style="margin:10px 2px 0;">번호는 계산된 전체 순서예요. 버튼이나 꾹 눌러서 순서를 바로 바꿀 수 있어요.</p>`;
+    }).join('') + `<p class="hint" style="margin:10px 2px 0;">꾹 눌러서 순서 변경</p>`;
   },
 
   _scheduleRouteRender(){
@@ -3248,6 +3231,7 @@ const App = {
       _kakaoMap.setMaxLevel(14);
       _kakaoMap.addControl(new kakao.maps.ZoomControl(), kakao.maps.ControlPosition.RIGHT);   // + / − 버튼
       this.ensureMapResizeObserver(container);
+      this.installMapFitButton(container);
       // 확대/축소가 바뀌면 화면상 필지 사이 간격(픽셀 거리)도 달라지므로, 지번 겹침
       // 방지 배치(디클러터)를 다시 계산해야 함. 스크롤휠 연타 등으로 이벤트가 촘촘히
       // 여러 번 발생할 수 있어 살짝 디바운스함.
@@ -3842,6 +3826,10 @@ const App = {
     v.mapHidden = !v.mapHidden;
     this.renderMapMarkers(false); // 토글만으로는 지도 확대/이동 상태를 건드리지 않음
   },
+  toggleAllVillagesMap(){
+    const allOn = this.villageOrder.every(k=>!this.villages[k].mapHidden);
+    this.setAllVillagesMapVisible(!allOn);
+  },
   setAllVillagesMapVisible(visible){
     this.villageOrder.forEach(k=>{ this.villages[k].mapHidden = !visible; });
     this.renderMapMarkers(false); // 위와 동일 — 필요하면 "🔎 전체보기"로 직접 맞춤
@@ -3849,6 +3837,31 @@ const App = {
   // "🔎 전체보기" 버튼용: 지금 켜져 있는(필터를 통과한) 핀들이 화면에 다 들어오도록
   // 명시적으로 한 번만 맞춰줌. 체크박스/토글은 더 이상 자동으로 이 동작을 하지 않으므로,
   // 전체 범위로 다시 보고 싶을 때는 이 버튼을 눌러야 함.
+  // 지도 확대/축소 컨트롤 바로 아래에 "전체보기" 버튼을 붙임(줌 컨트롤 실제 위치를 재서 따라감).
+  installMapFitButton(container){
+    if(!container || container.querySelector('#mapFitBtn')) return;
+    const btn = document.createElement('button');
+    btn.id = 'mapFitBtn'; btn.type = 'button'; btn.title = '전체보기';
+    btn.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V5.5C4 4.7 4.7 4 5.5 4H9M15 4h3.5c.8 0 1.5.7 1.5 1.5V9M20 15v3.5c0 .8-.7 1.5-1.5 1.5H15M9 20H5.5C4.7 20 4 19.3 4 18.5V15"/><circle cx="12" cy="12" r="2" fill="currentColor" stroke="none"/></svg>';
+    btn.onclick = (e)=>{ e.stopPropagation(); this.fitMapToVisible(); };
+    ['mousedown','touchstart','dblclick'].forEach(ev=> btn.addEventListener(ev, e=>e.stopPropagation(), {passive:true}));
+    container.appendChild(btn);
+    const place = ()=>{
+      const cr = container.getBoundingClientRect();
+      let zc = null;
+      Array.from(container.children).forEach(ch=>{
+        if(ch === btn) return;
+        const r = ch.getBoundingClientRect();
+        if(r.width>0 && r.width<=80 && r.height>=80 && r.right >= cr.right-60) zc = r;
+      });
+      if(zc){ btn.style.top = (zc.bottom - cr.top + 8) + 'px'; btn.style.right = Math.max(0, cr.right - zc.right) + 'px'; }
+      else { btn.style.top = 'calc(50% + 104px)'; btn.style.right = '10px'; }
+    };
+    place();
+    setTimeout(place, 300);
+    kakao.maps.event.addListener(_kakaoMap, 'idle', place);
+    window.addEventListener('resize', place);
+  },
   fitMapToVisible(){
     if(!_kakaoMap) return;
     if(_kakaoLastBounds){
@@ -3953,15 +3966,8 @@ const App = {
     this.renderNavSelectPanel();
   },
   syncNavModeUI(){
-    const btn = document.getElementById('navSelectModeBtn');
-    const label = document.getElementById('navSelectModeLabel');
-    if(btn) btn.classList.toggle('active', this.navSelectMode);
-    if(label) label.textContent = this.navSelectMode ? '선택 중 · 탭하면 종료' : '길찾기';
-    const hint = document.getElementById('navSelectHint');
-    if(hint){
-      hint.textContent = this.navSelectMode ? '핀을 출발 → 경유 → 도착 순서로 누르세요' : '핀을 순서대로 눌러 경로 만들기';
-      hint.style.display = (!this.navSelectMode && this._navSelectPoints.length) ? 'none' : '';
-    }
+    const fab = document.getElementById('fabNavBtn');
+    if(fab){ fab.classList.toggle('active', !!this.navSelectMode); fab.title = this.navSelectMode ? '길찾기 선택 끝내기' : '길찾기'; }
   },
   addNavSelectPoint(lat, lng, name){
     if(this._navSelectPoints.length >= KAKAO_ROUTE_MAX_POINTS){
@@ -3993,7 +3999,7 @@ const App = {
     const shortName = (n)=> String(n||'').replace(/^필지\s*\((?:지번\s*)?(.*)\)$/, '$1');
     const last = pts.length-1;
     if(pts.length===0){
-      chipsEl.innerHTML = '<span class="nav-empty">지도에서 핀을 눌러 출발지부터 선택하세요.</span>';
+      chipsEl.innerHTML = '<span class="nav-empty">출발지 핀부터 눌러주세요</span>';
     } else {
       const bg = (i)=> i===0 ? '#1E8E3E' : (i===last ? '#2B2D42' : NAV_LEG_COLORS[(i-1) % NAV_LEG_COLORS.length]);
       const role = (i)=> i===0 ? '출발' : (i===last ? '도착' : `경유${i}`);
@@ -4008,7 +4014,7 @@ const App = {
       if(R){
         statusEl.textContent = `🚗 ${R.distanceKm}km · ${R.durationMin}분`;
       } else if(pts.length===1){
-        statusEl.textContent = '핀을 1개 더 선택하세요';
+        statusEl.textContent = '도착지를 눌러주세요';
       } else {
         statusEl.textContent = '';
       }
@@ -5060,23 +5066,19 @@ const App = {
     if(showVillages || showParcels){
       const villagesInView = this.villageOrder.map(k=>this.villages[k]).filter(v=> (showVillages && v.centroid) || (showParcels && v.parcels.some(p=>p.coord)));
       if(villagesInView.length>1){
-        legendEl.innerHTML = villagesInView.map(v=>
-          `<button type="button" class="vl-chip ${v.mapHidden?'off':''}" onclick="App.toggleVillageMapVisibility('${v.key}')" title="${v.mapHidden?'탭하면 다시 표시':'탭하면 숨기기'}">
+        const allOn = villagesInView.every(v=>!v.mapHidden);
+        const noneOn = villagesInView.every(v=>v.mapHidden);
+        legendEl.innerHTML = `<button type="button" class="vl-chip vl-all ${allOn?'':(noneOn?'off':'part')}" onclick="App.toggleAllVillagesMap()">${allOn?'✓':(noneOn?'':'–')} 전체</button>` + villagesInView.map(v=>
+          `<button type="button" class="vl-chip ${v.mapHidden?'off':''}" onclick="App.toggleVillageMapVisibility('${v.key}')">
             <span class="vl-dot" style="background:${v.mapHidden ? 'var(--border)' : colorMap[v.key]};"></span>${v.name}
           </button>`
         ).join('');
         legendEl.classList.remove('hidden');
-        document.getElementById('mapLegendHint').classList.remove('hidden');
-        document.getElementById('mapLegendActions').classList.remove('hidden');
       } else {
         legendEl.classList.add('hidden');
-        document.getElementById('mapLegendHint').classList.add('hidden');
-        document.getElementById('mapLegendActions').classList.add('hidden');
       }
     } else {
       legendEl.classList.add('hidden');
-      document.getElementById('mapLegendHint').classList.add('hidden');
-      document.getElementById('mapLegendActions').classList.add('hidden');
     }
 
     // ➰ 필지 순서선: 좌표 목록이 같으면 폴리라인을 다시 만들지 않음
@@ -5085,7 +5087,7 @@ const App = {
     const navVisible = showNavRoute && !!this._lastNavRoute; // 도로 경로가 보이면 직선 순서선은 숨겨 겹침 방지
     if(showRouteLine && !navVisible){
       if(!hasOrder){
-        routeStatusEl.textContent = '➰ 필지 순서선: 아직 필지 방문 순서가 계산되지 않았어요 — 계산 화면에서 "기준별 순서"의 "필지" 또는 "출발지" 버튼을 먼저 눌러주세요.';
+        routeStatusEl.textContent = '➰ 순서선: 계산 화면에서 방문 순서를 먼저 계산해주세요.';
         routeStatusEl.classList.remove('hidden');
       } else {
         routePts = parcelList.filter(p=>p.coord).map(p=>[p.coord.lat, p.coord.lng]);
@@ -5097,7 +5099,7 @@ const App = {
           routeSig = (demoteOrderLine ? 'd' : 's') + routePts.map(q=>q[0]+','+q[1]).join(';');
           routeStatusEl.classList.add('hidden');
         } else {
-          routeStatusEl.textContent = '➰ 필지 순서선: 좌표가 있는 필지가 2개 이상이어야 선을 그릴 수 있어요 (현재 ' + routePts.length + '개).';
+          routeStatusEl.textContent = '➰ 순서선: 좌표가 있는 필지가 2개 이상 필요해요 (현재 ' + routePts.length + '개).';
           routeStatusEl.classList.remove('hidden');
         }
       }
