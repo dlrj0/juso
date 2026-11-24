@@ -4413,6 +4413,7 @@ const App = {
     const MAX_ARROWS = 70;
     let made = 0;
     const placedBadges = [];
+    const placedArrows = [];   // 모든 구간의 화살표 위치(m) — 서로 겹치면 뒤 구간 것을 앞으로 살짝 밀기 위해
     for(const leg of R.legs){
       if(this._navFocus !== null && R.legs.indexOf(leg) !== this._navFocus) continue;  // 선택한 구간만 번호/화살표 표시
       let total = 0;
@@ -4481,7 +4482,13 @@ const App = {
             const t = (next - walked) / segLen;
             const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
             const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
-            if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - badgeS) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
+            let blocked = false;
+            if(Math.abs(next - badgeS) > 26*R.lastMpp){
+              const ax = lng*R.kx, ay = lat*R.ky;
+              if(placedArrows.some(o=> Math.hypot(o.x-ax, o.y-ay) < 20*R.lastMpp)){ next += 22*R.lastMpp; continue; }   // 다른 구간 화살표와 겹침 → 앞으로 밀어서 다시
+              placedArrows.push({x: ax, y: ay});
+            } else blocked = true;
+            if(!blocked && made < MAX_ARROWS && inView(lat, lng)){  // 번호 배지와 겹치는 화살표는 생략
               const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
               const sz = (pts[i][2] > 0.5) ? 18 : 16;   // 오가는 겹침 구간은 방향 화살표를 크게
               // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
@@ -4497,7 +4504,7 @@ const App = {
               _kakaoNavRouteArrows.push(ov);
               made++;
             }
-            next += shortLeg ? total*0.5 : (pts[i][2] > 0.5 ? spacing*0.45 : spacing);   // 겹침 구간은 화살표 간격을 촘촘하게
+            next += shortLeg ? total*0.5 : spacing;   // 겹침 구간은 화살표 간격을 촘촘하게
           }
           walked += segLen;
           if(next > endLimit) break;
@@ -4708,6 +4715,30 @@ const App = {
         });
       });
       if(flat.length<2 || !summary) return {error:'no-route'};
+
+      // 겹침 판정은 '점과 점 사이 거리'로 하는데, 직선에 가까운 도로는 TMAP 꼭짓점이 수십 m씩 듬성해서
+      // 같은 길을 지나도 서로 다른 위치에 점이 찍혀 겹침으로 인식되지 않았음(→ 선이 같은 차선에 포개짐).
+      // 그래서 판정 전에 모든 선분에 6m 이하 간격으로 점을 보강함. 경유지 꼭짓점 번호(wpTagged)는 새 번호로 바꿔줌.
+      {
+        const kxD = 111320 * Math.cos(flat[0][0]*Math.PI/180), kyD = 110574, STEP_D = 6;
+        const dense = [], idxMap = [];
+        for(let i=0; i<flat.length; i++){
+          if(i > 0){
+            const a = flat[i-1], b = flat[i];
+            const len = Math.hypot((b[1]-a[1])*kxD, (b[0]-a[0])*kyD);
+            const n = Math.min(400, Math.floor(len/STEP_D));
+            for(let k=1; k<=n; k++){
+              const t = k/(n+1);
+              dense.push([a[0]+(b[0]-a[0])*t, a[1]+(b[1]-a[1])*t, b[2]]);
+            }
+          }
+          idxMap[i] = dense.length;
+          dense.push(flat[i]);
+        }
+        for(let k=0; k<wpTagged.length; k++) wpTagged[k] = idxMap[wpTagged[k]];
+        flat.length = 0;
+        dense.forEach(q=> flat.push(q));
+      }
 
       // 같은 길을 몇 번째로 지나는지(0=처음, 1=두 번째, 2=세 번째 이상) 계산.
       // 이미 지나온 점(경로상 60m 이상 앞)이 18m 안에 있고 '진행 방향이 거의 같거나 정반대'일 때만
