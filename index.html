@@ -419,12 +419,26 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .village-legend .vl-all{font-weight:800;}
   .village-legend .vl-all.part{background:var(--accent-soft);border-color:var(--accent);}
   .village-legend .vl-all:not(.off):not(.part){background:var(--accent-soft);border-color:var(--accent);color:var(--accent-dark);}
-  #mapFitBtn{position:absolute;z-index:60;width:42px;height:42px;border-radius:8px;border:1px solid #c9ced6;background:#fff;color:#333;
-    display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-shadow:0 1px 3px rgba(0,0,0,.25);}
+  #mapFitBtn{position:absolute;z-index:60;width:36px;height:36px;border-radius:4px;border:1px solid #d5d8dc;background:#fff;color:#333;
+    display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.3);}
+  #mapFitBtn svg{width:18px;height:18px;}
   #mapFitBtn:active{background:#eef1f4;}
   /* ---- 길찾기(핀 선택) 컴팩트 UI ---- */
-  .nav-card{margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);
-    display:flex;flex-direction:column;gap:7px;}
+  /* 길찾기 패널: 지도 프레임 옆(오른쪽 → 왼쪽 → 자리가 없으면 지도 위 구석)에 떠서 지도를 밀지 않음 */
+  .nav-card{position:absolute;z-index:6;width:250px;box-sizing:border-box;padding:8px 10px;border:1px solid var(--border);
+    border-radius:12px;background:var(--surface);box-shadow:0 2px 10px rgba(0,0,0,.12);display:flex;flex-direction:column;gap:7px;}
+  .nav-card.side-r{left:calc(100% + 10px);top:0;}
+  .nav-card.side-l{right:calc(100% + 10px);top:0;}
+  .nav-card.over{left:12px;top:12px;width:min(250px,72%);}
+  .nav-card:not(.over) .nav-chips{flex-direction:column;align-items:stretch;}
+  .nav-card:not(.over) .nav-chip{width:100%;box-sizing:border-box;}
+  .nav-card:not(.over) .nav-chip-name{max-width:none;flex:1;}
+  .nav-card:not(.over) .nav-chip button{margin-left:auto;}
+  .nav-card:not(.over) .nav-chip-arrow{display:none;}
+  .nav-card:not(.over) .nav-legs{flex-direction:column;}
+  .nav-card:not(.over) .nav-leg{width:100%;box-sizing:border-box;}
+  .nav-leg .nav-leg-km{margin-left:auto;}
+  body.map-capturing .nav-card{display:none !important;}
   .nav-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
   .nav-chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 4px 0 3px;border-radius:100px;
     background:#fff;border:1px solid var(--border);font-size:12px;color:var(--text);max-width:100%;}
@@ -688,6 +702,15 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div class="gps-status hidden" id="routeLineStatus"></div>
 
+
+      <div class="village-legend hidden" id="mapVillageLegend"></div>
+    </div>
+
+    <div id="mapFrame" title="테두리를 끌어 지도 크기를 바꿔요 — 반대쪽 테두리와 지도 내용은 그대로. 두 번 탭하면 기본 크기">
+      <div class="mrh mrh-n" data-dir="n"></div><div class="mrh mrh-s" data-dir="s"></div>
+      <div class="mrh mrh-w" data-dir="w"></div><div class="mrh mrh-e" data-dir="e"></div>
+      <div class="mrh mrh-nw" data-dir="nw"></div><div class="mrh mrh-ne" data-dir="ne"></div>
+      <div class="mrh mrh-sw" data-dir="sw"></div><div class="mrh mrh-se" data-dir="se"></div>
       <div id="navSelectPanel" class="nav-card hidden">
         <div id="navSelectChips" class="nav-chips"></div>
         <div class="nav-actions">
@@ -698,15 +721,6 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
         <div id="navRouteLegend" class="nav-legs"></div>
         <details id="navDetails" class="nav-details hidden"><summary id="navDetailsSummary">자세히</summary><div id="navDetailText" class="nav-detail-text"></div></details>
       </div>
-
-      <div class="village-legend hidden" id="mapVillageLegend"></div>
-    </div>
-
-    <div id="mapFrame" title="테두리(상·하·좌·우·모서리)를 끌어 지도 크기를 바꿔요 — 폭은 항상 가운데 기준. 두 번 탭하면 기본 크기">
-      <div class="mrh mrh-n" data-dir="n"></div><div class="mrh mrh-s" data-dir="s"></div>
-      <div class="mrh mrh-w" data-dir="w"></div><div class="mrh mrh-e" data-dir="e"></div>
-      <div class="mrh mrh-nw" data-dir="nw"></div><div class="mrh mrh-ne" data-dir="ne"></div>
-      <div class="mrh mrh-sw" data-dir="sw"></div><div class="mrh mrh-se" data-dir="se"></div>
       <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
     </div>
   </div>
@@ -3273,7 +3287,7 @@ const App = {
     const c = document.getElementById('kakaoMapContainer');
     if(c && this._mapLockSavedHeight !== undefined){ c.style.height = this._mapLockSavedHeight; this._mapLockSavedHeight = undefined; }
     clearTimeout(this._mapUnlockTimer);
-    this._mapUnlockTimer = setTimeout(()=>{ _mapLock = null; this.syncMapSize(); }, delayMs || 0);
+    this._mapUnlockTimer = setTimeout(()=>{ _mapLock = null; this.syncMapSize(); this._mapResizeAnchor = null; }, delayMs || 0);
   },
   syncMapSize(){
     if(!_kakaoMap) return;
@@ -3282,6 +3296,7 @@ const App = {
     const container = document.getElementById('kakaoMapContainer');
     const w = container.clientWidth, h = container.clientHeight;
     if(!w || !h) return;                                             // 레이아웃 미확정 → 확정되면 RO가 다시 부름
+    const prevSize = _mapLastSize;
     const grew = w > _mapLastSize.w || h > _mapLastSize.h;
     _mapLastSize = {w, h};
     const center = _kakaoMap.getCenter();
@@ -3290,6 +3305,17 @@ const App = {
       _kakaoMap.setBounds(_kakaoLastBounds);
     } else {
       _kakaoMap.setCenter(center);
+      // 크기 조절 중이면 고정된 쪽 기준으로 지도 내용이 제자리에 남도록 중심을 반 만큼 옮김
+      // (예: 왼쪽 테두리를 잡아 dw만큼 넓히면 중심을 dw/2 왼쪽 지점으로 → 내용은 오른쪽 가장자리에 붙은 채 왼쪽만 더 보임)
+      const A = this._mapResizeAnchor;
+      if(A && prevSize.w && prevSize.h && (w !== prevSize.w || h !== prevSize.h)){
+        const px = A.x === 'right' ? -(w - prevSize.w)/2 : (A.x === 'left' ? (w - prevSize.w)/2 : 0);
+        const py = A.y === 'bottom' ? -(h - prevSize.h)/2 : (A.y === 'top' ? (h - prevSize.h)/2 : 0);
+        try{
+          const proj = _kakaoMap.getProjection();
+          _kakaoMap.setCenter(proj.coordsFromContainerPoint(new kakao.maps.Point(w/2 + px, h/2 + py)));
+        }catch(_){}
+      }
       // 넓어졌을 때 새로 드러난 영역이 빈 타일로 남는 경우를 위한 강제 재그리기(기존 "흔들기"를 이 한 곳으로 격리).
       // 잠금 중(캡처/드래그)에는 위성 타일 깜빡임 때문에 하지 않음.
       if(grew && !_mapLock){
@@ -3301,6 +3327,7 @@ const App = {
       }
     }
     window.dispatchEvent(new Event('resize'));
+    this.layoutNavPanel();
     this.renderMapMarkers(false);
   },
   ensureMapResizeObserver(container){
@@ -3721,7 +3748,9 @@ const App = {
   },
 
   // ---- 지도 크기 직접 조절(아래 테두리 드래그) ----
-  _mapUserWidth: null,  // null이면 기본 폭(화면 폭에 맞춤). 값이 있으면 항상 가운데 정렬로 이 폭 적용
+  _mapUserWidth: null,  // null이면 기본 폭(화면 폭에 맞춤). 값이 있으면 이 폭 적용
+  _mapUserLeft: 0,      // 본문(#screen-map) 왼쪽 가장자리 기준 프레임 왼쪽 위치(px, 음수면 본문 밖으로 나감)
+  _mapResizeAnchor: null, // 드래그 중 고정되는 쪽 {x:'left'|'right'|null, y:'top'|'bottom'|null}
   // 폭은 프레임에 지정하고, 좌측 여백을 calc(50% - 폭/2)로 줘서 "부모(=가운데 정렬된 본문)의
   // 정중앙"에 오게 함. 본문 최대폭(640px)보다 넓게 키워도 한쪽으로 치우치지 않고 양쪽으로 똑같이
   // 늘어남(부모 폭보다 커지면 음수 여백이 되어 좌우로 균등하게 삐져나옴).
@@ -3730,13 +3759,29 @@ const App = {
     if(!frame) return;
     if(!this._mapUserWidth){
       frame.style.width = ''; frame.style.marginLeft = ''; frame.style.marginRight = '';
+      this.layoutNavPanel();
       return;
     }
     const vw = document.documentElement.clientWidth;
+    const pr = frame.parentElement.getBoundingClientRect();
     const w = Math.max(260, Math.min(this._mapUserWidth, vw - 8));
+    // 화면 밖으로 나가지 않도록 왼쪽 위치 보정
+    const L = Math.max(4 - pr.left, Math.min(this._mapUserLeft || 0, vw - 4 - pr.left - w));
     frame.style.width = w + 'px';
-    frame.style.marginLeft = `calc(50% - ${w/2}px)`;
+    frame.style.marginLeft = L + 'px';
     frame.style.marginRight = '0';
+    this.layoutNavPanel();
+  },
+  // 길찾기 패널을 지도 프레임 옆에 배치: 오른쪽 여백이 충분하면 오른쪽, 아니면 왼쪽, 둘 다 없으면 지도 위 구석.
+  layoutNavPanel(){
+    const panel = document.getElementById('navSelectPanel');
+    const frame = document.getElementById('mapFrame');
+    if(!panel || !frame) return;
+    const fr = frame.getBoundingClientRect();
+    const vw = document.documentElement.clientWidth;
+    const need = 250 + 10 + 6;
+    panel.classList.remove('side-r','side-l','over');
+    panel.classList.add(vw - fr.right >= need ? 'side-r' : (fr.left >= need ? 'side-l' : 'over'));
   },
   _mapUserHeight: null, // null이면 기본 크기(일반 62vh / 크게 보기는 화면 끝까지)
   initMapResizeHandle(){
@@ -3745,7 +3790,7 @@ const App = {
     const container = document.getElementById('kakaoMapContainer');
     if(!frame || !container) return;
     this._mapResizeBound = true;
-    window.addEventListener('resize', ()=>{ if(this._mapUserWidth) this.applyMapWidth(); });
+    window.addEventListener('resize', ()=>{ if(this._mapUserWidth) this.applyMapWidth(); this.layoutNavPanel(); });
     const MIN_W = 260, MIN_H = 160;
     const clamp = (v, lo, hi)=> Math.min(hi, Math.max(lo, v));
     let st = null, lastTapAt = 0;
@@ -3761,12 +3806,15 @@ const App = {
       h.addEventListener('pointerdown', (e)=>{
         if(e.pointerType==='mouse' && e.button!==0) return;
         const fr = frame.getBoundingClientRect();
+        const pr = frame.parentElement.getBoundingClientRect();
         st = {
           h, x:e.clientX, y:e.clientY, moved:0,
-          w: fr.width, ch: container.getBoundingClientRect().height, bottomV: fr.bottom,
+          w: fr.width, L: fr.left - pr.left, pl: pr.left, ch: container.getBoundingClientRect().height, bottomV: fr.bottom,
           east: dir.includes('e'), west: dir.includes('w'),
           north: dir.includes('n'), south: dir.includes('s')
         };
+        // 잡은 테두리의 반대쪽을 고정 → 지도 내용도 그 기준으로 제자리에 남고, 잡은 쪽으로만 더 보임
+        this._mapResizeAnchor = { x: st.east ? 'left' : (st.west ? 'right' : null), y: st.south ? 'top' : (st.north ? 'bottom' : null) };
         this.lockMap('resize');
         try{ h.setPointerCapture(e.pointerId); }catch(_){}
         h.classList.add('dragging');
@@ -3778,12 +3826,18 @@ const App = {
         e.preventDefault();
         const dx = e.clientX - st.x, dy = e.clientY - st.y;
         st.moved = Math.max(st.moved, Math.abs(dx), Math.abs(dy));
-        // 가로(좌/우/대각선): 항상 가운데 정렬을 유지하며 양쪽이 똑같이 늘고 줄도록 이동량의 2배를 폭에
-        // 반영 — 그래서 잡고 있는 테두리가 손가락/마우스를 정확히 따라감.
+        // 가로(좌/우/대각선): 잡은 테두리만 움직이고 반대쪽 테두리는 제자리에 고정.
         if(st.east || st.west){
           const vw = document.documentElement.clientWidth;
-          const sign = st.east ? 1 : -1;
-          this._mapUserWidth = Math.round(clamp(st.w + 2*sign*dx, MIN_W, vw - 8));
+          let nw, nL;
+          if(st.east){            // 오른쪽을 잡음 → 왼쪽 고정
+            nw = clamp(st.w + dx, MIN_W, vw - 4 - (st.pl + st.L)); nL = st.L;
+          } else {                // 왼쪽을 잡음 → 오른쪽 고정
+            const R = st.L + st.w;
+            nw = clamp(st.w - dx, MIN_W, R + st.pl - 4); nL = R - nw;
+          }
+          this._mapUserWidth = Math.round(nw);
+          this._mapUserLeft = Math.round(nL);
           this.applyMapWidth();
         }
         // 세로: 아래 테두리는 높이만 늘림. 위 테두리는 페이지가 위에서부터 흐르는 구조라 높이를
@@ -3808,7 +3862,7 @@ const App = {
         if(moved < 6){
           const now = Date.now();
           if(now - lastTapAt < 380){
-            lastTapAt = 0; this._mapUserHeight = null; this._mapUserWidth = null; this.applyMapFocusHeight();
+            lastTapAt = 0; this._mapResizeAnchor = null; this._mapUserHeight = null; this._mapUserWidth = null; this._mapUserLeft = 0; this.applyMapFocusHeight();
           } else lastTapAt = now;
         }
         // ResizeObserver 콜백은 비동기라 조금 늦게 들어오므로 잠금을 잠깐 더 유지한 뒤 풀고 동기화
@@ -3847,17 +3901,28 @@ const App = {
     container.appendChild(btn);
     const place = ()=>{
       const cr = container.getBoundingClientRect();
+      // 확대/축소 컨트롤(오른쪽 가장자리에 붙은 좁고 긴 상자)을 찾음 — 가장 큰 후보 하나
       let zc = null;
-      Array.from(container.children).forEach(ch=>{
-        if(ch === btn) return;
-        const r = ch.getBoundingClientRect();
-        if(r.width>0 && r.width<=80 && r.height>=80 && r.right >= cr.right-60) zc = r;
+      container.querySelectorAll('*').forEach(el=>{
+        if(el === btn || btn.contains(el)) return;
+        const r = el.getBoundingClientRect();
+        if(r.width>=24 && r.width<=64 && r.height>=100 && r.height<=320 && r.right>=cr.right-40 && r.right<=cr.right+1 && r.top>=cr.top-1){
+          if(!zc || r.height > zc.height) zc = r;
+        }
       });
-      if(zc){ btn.style.top = (zc.bottom - cr.top + 8) + 'px'; btn.style.right = Math.max(0, cr.right - zc.right) + 'px'; }
-      else { btn.style.top = 'calc(50% + 104px)'; btn.style.right = '10px'; }
+      if(zc){
+        const w = Math.round(zc.width);
+        btn.style.width = w+'px'; btn.style.height = w+'px';
+        btn.style.top = Math.round(zc.bottom - cr.top + 6)+'px';
+        btn.style.right = Math.max(0, Math.round(cr.right - zc.right))+'px';
+        btn.style.bottom = 'auto';
+      } else {   // 컨트롤을 못 찾으면 오른쪽 아래 구석
+        btn.style.width = '36px'; btn.style.height = '36px';
+        btn.style.top = 'auto'; btn.style.bottom = '12px'; btn.style.right = '10px';
+      }
     };
     place();
-    setTimeout(place, 300);
+    setTimeout(place, 300); setTimeout(place, 1200);
     kakao.maps.event.addListener(_kakaoMap, 'idle', place);
     window.addEventListener('resize', place);
   },
@@ -3990,6 +4055,7 @@ const App = {
     this.renderNavSelectPanel();
   },
   renderNavSelectPanel(){
+    this.layoutNavPanel();
     const chipsEl = document.getElementById('navSelectChips');
     const statusEl = document.getElementById('navRouteStatus');
     if(!chipsEl) return;
