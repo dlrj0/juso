@@ -1391,6 +1391,10 @@ let _navRouteRender = null;            // 지금 그려진 길찾기 폴리라�
 const NAV_LEG_COLORS = ['#1D70F5','#FF8C00','#8E3FD1','#795548','#D6336C','#6B8E00']; // 구간 색(서로 확연히 다른 6색 순환) + 구간 번호 배지로 식별
 const NAV_CORNER_RADIUS_PX = 18;   // 좌/우회전 모서리를 둥글게 만드는 반지름(화면 픽셀). 키우면 더 크게 휘고, 0이면 직선 모서리
 const NAV_LANE_OFFSET_PX = 6;   // '같은 길을 다시 지나는 곳'에서만 진행 방향 오른쪽으로 이만큼 벌림(오가면 서로 반대편 → 12px 간격). 그 외 구간은 도로 위에 그대로
+// 차선 간격은 화면 픽셀(NAV_LANE_OFFSET_PX) 기준이라, 축소하면 도로 폭(m)은 픽셀로 줄어드는데 선 간격만 그대로여서
+// 4겹쯤 되면 선이 도로 밖으로 벌어졌음 → 실제 거리(m)로도 상한을 둠(도로 반폭 안에 들어오게). 하한은 선이 완전히 한 줄로 합쳐지지 않게.
+const NAV_LANE_MAX_M = 1.5;      // 차선 간격 상한(m). 4겹일 때 가장 바깥 선이 중심에서 약 3.5m 이내
+const NAV_LANE_MIN_PX = 2.5;     // 차선 간격 하한(화면 픽셀)
 const NAV_PASS_WIDTHS = [5, 5, 5];  // 연하고 가늘게 겹치는 방식은 노란 도로 위에서 안 보여서 폐기 — 굵기 동일
 function tintColor(hex, t){   // 색을 검정 쪽으로 어둡게(이름은 유지). t=0.5 → 30%, 0.72 → 43% 어둡게
   const n = parseInt(hex.slice(1), 16), k = 1 - t*0.6;
@@ -4470,7 +4474,7 @@ const App = {
     if(!mpp) return;
     if(force || !R.lastMpp || Math.abs(mpp / R.lastMpp - 1) > 0.03){
       R.lastMpp = mpp;
-      const d = NAV_LANE_OFFSET_PX * mpp;
+      const d = Math.max(NAV_LANE_MIN_PX * mpp, Math.min(NAV_LANE_OFFSET_PX * mpp, NAV_LANE_MAX_M));
       // 모서리를 먼저 둥글게(경로 순서대로 모든 런을 한꺼번에 — 런 경계의 모서리도 처리) 한 뒤 차선 간격만큼 오른쪽으로 밀음
       const seq = [];
       R.legs.forEach(leg=>leg.runs.forEach(run=>seq.push(run)));
