@@ -1065,6 +1065,11 @@ function offsetPolylineRight(pts, dMeters, ref){
   const sm = xy.map(q=> q.w > 0 ? 1 : 0);
   for(let i=1; i<xy.length; i++) sm[i] = Math.max(sm[i], sm[i-1] - segM[i]/RAMP);
   for(let i=xy.length-2; i>=0; i--) sm[i] = Math.max(sm[i], sm[i+1] - segM[i+1]/RAMP);
+  // 같은 방향으로 여러 번 겹쳐 지나는 곳은 같은 차선에 포개져 아래 선/화살표가 가려지므로,
+  // 차선 번호(w-1)만큼 옆 차선으로 더 벌림. 이것도 겹침 가장자리에서 서서히 0으로 줄임.
+  const rk = xy.map(q=> q.w > 1.001 ? q.w-1 : 0);
+  for(let i=1; i<xy.length; i++) rk[i] = Math.max(rk[i], rk[i-1] - segM[i]/RAMP);
+  for(let i=xy.length-2; i>=0; i--) rk[i] = Math.max(rk[i], rk[i+1] - segM[i+1]/RAMP);
   const nrm = [];
   for(let i=0; i<xy.length-1; i++){
     const dx = xy[i+1].x-xy[i].x, dy = xy[i+1].y-xy[i].y, len = Math.hypot(dx, dy) || 1;
@@ -1081,7 +1086,7 @@ function offsetPolylineRight(pts, dMeters, ref){
       if(sl < 1e-3){ nx = a.x; ny = a.y; }               // 완전 U턴: 앞 구간 기준으로만 밀기
       else { nx = sx/sl; ny = sy/sl; scale = 1/Math.max(nx*a.x + ny*a.y, 0.55); } // 모서리가 뾰족해지는 정도 제한
     }
-    const di = dMeters * (0.5 + 0.5*sm[i]) * scale;   // 겹침 없는 곳도 우측통행 차선 쪽으로 절반만큼 붙여서, 커브에서 왼쪽으로 쏠려 보이지 않게 함
+    const di = dMeters * (0.5 + 0.5*sm[i] + 1.35*rk[i]) * scale;   // 겹침 없는 곳도 우측통행 차선 쪽으로 절반만큼 붙여서, 커브에서 왼쪽으로 쏠려 보이지 않게 함
     out.push([ref.lat + (xy[i].y + ny*di)/ky, ref.lng + (xy[i].x + nx*di)/kx, sm[i]]);
   }
   return out;
@@ -4407,6 +4412,7 @@ const App = {
                                 lng > sw.getLng()-padLng && lng < ne.getLng()+padLng;
     const MAX_ARROWS = 70;
     let made = 0;
+    const placedBadges = [];
     for(const leg of R.legs){
       if(this._navFocus !== null && R.legs.indexOf(leg) !== this._navFocus) continue;  // 선택한 구간만 번호/화살표 표시
       let total = 0;
@@ -4415,35 +4421,52 @@ const App = {
           total += Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
         }
       });
-      // 구간 번호 배지: 구간 길이의 정확히 절반 지점에 "①②③"을 구간 색으로 표시
+      const shortLeg = total < spacing*1.6;
+      // 구간 번호 배지: 보통은 구간 길이의 절반 지점. 같은 길을 겹쳐 지나는 다른 구간의 배지와 겹치면
+      // 구간을 따라 조금씩 옮겨서 서로 가리지 않게 함(위치는 화면 이동과 무관하게 항상 같게 계산).
+      let badgeS = total/2;
       {
-        let acc = 0, half = total/2, placed = false;
-        for(const run of leg.runs){
-          for(let i=1; i<run.offset.length && !placed; i++){
-            const L = Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
-            if(acc + L >= half && L > 0){
-              const t = (half-acc)/L;
-              const lat = run.offset[i-1][0] + (run.offset[i][0]-run.offset[i-1][0])*t;
-              const lng = run.offset[i-1][1] + (run.offset[i][1]-run.offset[i-1][1])*t;
-              if(inView(lat, lng)){
-                const ov = new kakao.maps.CustomOverlay({
-                  position: new kakao.maps.LatLng(lat, lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 9,
-                  content: `<div style="width:22px;height:22px;border-radius:50%;background:${leg.color};color:#fff;border:2px solid #fff;
-                    font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none;">${R.legs.indexOf(leg)+1}</div>`
-                });
-                ov.setMap(_kakaoMap); _kakaoNavRouteArrows.push(ov);
+        const pointAt = (sd)=>{
+          let acc = 0;
+          for(const run of leg.runs){
+            for(let i=1; i<run.offset.length; i++){
+              const L = Math.hypot((run.offset[i][1]-run.offset[i-1][1])*R.kx, (run.offset[i][0]-run.offset[i-1][0])*R.ky);
+              if(L > 0 && acc + L >= sd){
+                const t = (sd-acc)/L;
+                return {lat: run.offset[i-1][0] + (run.offset[i][0]-run.offset[i-1][0])*t,
+                        lng: run.offset[i-1][1] + (run.offset[i][1]-run.offset[i-1][1])*t};
               }
-              placed = true;
+              acc += L;
             }
-            acc += L;
           }
-          if(placed) break;
+          return null;
+        };
+        const stepM = 26*R.lastMpp, minD = 24*R.lastMpp;
+        const cands = (shortLeg ? [0] : [0, 1, -1, 2, -2, 3, -3]).map(k=> total/2 + k*stepM)
+          .filter((sd, idx)=> idx === 0 || (sd > total*0.12 && sd < total*0.88));
+        let pick = null;
+        for(const sd of cands){
+          const pt = pointAt(sd); if(!pt) continue;
+          const bx = pt.lng*R.kx, by = pt.lat*R.ky;
+          if(!pick) pick = {sd, pt, bx, by};            // 다 겹치면 기본(절반 지점) 사용
+          if(!placedBadges.some(o=> Math.hypot(o.x-bx, o.y-by) < minD)){ pick = {sd, pt, bx, by}; break; }
+        }
+        if(pick){
+          badgeS = pick.sd;
+          placedBadges.push({x: pick.bx, y: pick.by});
+          if(inView(pick.pt.lat, pick.pt.lng)){
+            const ov = new kakao.maps.CustomOverlay({
+              position: new kakao.maps.LatLng(pick.pt.lat, pick.pt.lng), xAnchor: 0.5, yAnchor: 0.5, zIndex: 9,
+              content: `<div style="width:22px;height:22px;border-radius:50%;background:${leg.color};color:#fff;border:2px solid #fff;
+                font-size:12px;font-weight:800;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 3px rgba(0,0,0,.45);pointer-events:none;">${R.legs.indexOf(leg)+1}</div>`
+            });
+            ov.setMap(_kakaoMap); _kakaoNavRouteArrows.push(ov);
+          }
         }
       }
       if(total < spacing*0.25) continue; // 화면에서 너무 짧은 구간은 화살표 생략
       // 짧은 구간(예: 경유지로 들어가거나 나오는 연결선)은 가운데 번호 배지 때문에 화살표가 하나도 안 생겨
       // 방향을 알 수 없었음 → 25% / 75% 지점에 화살표를 하나씩 둠(가운데는 번호 배지).
-      const shortLeg = total < spacing*1.6;
       const margin = shortLeg ? total*0.2 : Math.min(spacing*0.3, total*0.25);
       const endLimit = total - margin;
       let next = shortLeg ? total*0.25 : Math.min(spacing*0.5, total*0.5), walked = 0;
@@ -4458,7 +4481,7 @@ const App = {
             const t = (next - walked) / segLen;
             const lat = pts[i-1][0] + (pts[i][0]-pts[i-1][0])*t;
             const lng = pts[i-1][1] + (pts[i][1]-pts[i-1][1])*t;
-            if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - total/2) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
+            if(made < MAX_ARROWS && inView(lat, lng) && Math.abs(next - badgeS) > 26*R.lastMpp){  // 번호 배지와 겹치는 화살표는 생략
               const bearing = (Math.atan2(dx, dy) * 180 / Math.PI + 360) % 360;
               const sz = (pts[i][2] > 0.5) ? 18 : 16;   // 오가는 겹침 구간은 방향 화살표를 크게
               // 회전 중심이 화살표 한가운데가 되도록 22x22 박스를 통째로 회전함
@@ -4708,19 +4731,24 @@ const App = {
         for(let i=0; i<flat.length; i++){
           const x = flat[i][1]*kx, y = flat[i][0]*ky;
           const cx = Math.floor(x/CELL), cy = Math.floor(y/CELL);
-          let lv = 0, ov = false;
+          let lv = 0, ov = false, rk = 0;
           for(let dx=-1; dx<=1; dx++) for(let dy=-1; dy<=1; dy++){
             const arr = grid.get((cx+dx)+','+(cy+dy));
             if(!arr) continue;
             for(const q of arr){
-              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL && sameRoad(sh[i], sh[q.i])){ lv = Math.max(lv, Math.min(2, q.lv+1)); ov = true; flat[q.i][4] = 1; }
+              if(cum[i]-q.c > 60 && Math.hypot(x-q.x, y-q.y) < CELL && sameRoad(sh[i], sh[q.i])){
+                lv = Math.max(lv, Math.min(2, q.lv+1)); ov = true; flat[q.i][4] = 1;
+                // 같은 방향으로 이미 지난 길이면 '옆 차선 번호'를 하나 올림(반대 방향은 도로 반대편을 쓰므로 올리지 않음)
+                if(angDiff(sh[i], sh[q.i]) < SAME_ROAD_DEG) rk = Math.max(rk, Math.min(2, (q.rk||0)+1));
+              }
             }
           }
           flat[i][3] = lv;
+          flat[i][5] = rk;
           if(ov) flat[i][4] = 1;
           const key = cx+','+cy;
           if(!grid.has(key)) grid.set(key, []);
-          grid.get(key).push({x, y, c:cum[i], lv, i});
+          grid.get(key).push({x, y, c:cum[i], lv, rk, i});
         }
         // 짧게 스친 조각 정리: 연속된 '겹침' 구간(급커브에서는 끊음)의 길이가 MIN_RETRACE_M보다 짧으면
         // 재방문 표시(lv/겹침 플래그)를 지움 → 교차로 한가운데의 어두운 조각·큰 화살표·옆으로 벌어지는 꼬리가 사라짐.
@@ -4736,7 +4764,7 @@ const App = {
             if(on && s < 0) s = i;
           }
         };
-        clearShort(p=> p[4] === 1, p=>{ p[4] = 0; });
+        clearShort(p=> p[4] === 1, p=>{ p[4] = 0; p[5] = 0; });
         clearShort(p=> p[3] > 0,  p=>{ p[3] = 0; });
       }
 
@@ -4797,10 +4825,10 @@ const App = {
           const fb = !!flat[i][2];
           const lv = flat[i][3] || 0;   // 재방문 단계(0=처음,1=두 번째…)별로 색을 달리 하기 위해 선을 나눔
           if(!cur || cur.fb !== fb || cur.lv !== lv){
-            cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1], flat[i-1][4]||0]]};
+            cur = {fb, lv, pts:[[flat[i-1][0], flat[i-1][1], flat[i-1][4] ? 1+(flat[i-1][5]||0) : 0]]};
             runs.push(cur);
           }
-          cur.pts.push([flat[i][0], flat[i][1], flat[i][4]||0]);
+          cur.pts.push([flat[i][0], flat[i][1], flat[i][4] ? 1+(flat[i][5]||0) : 0]);
         }
         legs.push({runs, distM});
       }
