@@ -597,7 +597,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     </div>
     <select class="sigungu-select" id="sigunguFilter" onchange="App.renderVillageList()" style="width:100%;margin-bottom:10px;"></select>
     <div class="searchbar">
-      <input type="text" id="villageSearch" placeholder="마을 이름으로 검색 (예: 대야면)" oninput="App.renderVillageList()">
+      <input type="text" id="villageSearch" placeholder="마을 이름으로 검색" oninput="App.renderVillageList()">
     </div>
     <div class="select-actions">
       <button onclick="App.selectAllVisible(true)">보이는 마을 전체선택</button>
@@ -629,7 +629,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 
       <label class="fieldlabel" style="margin-top:10px;">출발지(선택)</label>
       <div class="searchbar">
-        <input type="text" id="startAddrInput" placeholder="예: 00시 00면, 또는 OO읍 OO리 123">
+        <input type="text" id="startAddrInput" placeholder="주소 검색 (OO읍 OO리 123)">
         <button onclick="App.searchStartCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
       </div>
       <div id="startCandidates"></div>
@@ -802,7 +802,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
     <p class="hint" style="margin:2px 0 10px;">불편한 점·요청사항 (답장은 드리지 못해요)</p>
     <textarea id="inquiryText" rows="5" maxlength="2000"
       style="width:100%;border:1px solid var(--border);border-radius:10px;padding:10px 12px;font-size:14px;font-family:inherit;resize:vertical;"
-      placeholder="예: OO 화면에서 OO이 안 돼요"></textarea>
+      placeholder="내용을 입력하세요"></textarea>
     <p id="inquiryStatus" class="hint" style="min-height:16px;margin:6px 0 0;"></p>
     <button class="primary-btn" id="inquirySendBtn" onclick="App.submitInquiry()" style="margin-top:6px;">보내기</button>
     <button class="ghost-btn" onclick="App.closeInquiry()">닫기</button>
@@ -1993,14 +1993,13 @@ const App = {
 
   renderMappingScreen(){
     const box = document.getElementById('mappingFields');
-    const sampleRow = this.matrix[this.headerRowIdx+1] || [];
     const options = this.headers.map((h,idx)=>`<option value="${idx}">${h||'(빈 열 '+idx+')'}</option>`).join('');
     const rowHtml = (label, key, required) => {
       const val = this.colMap[key];
       return `<div class="field-row">
         <div>
           <div class="label">${label}${required?'':' <span style="font-weight:400;color:var(--text-mute);">(선택)</span>'}</div>
-          <div class="sample">예시: ${val!==null && sampleRow[val]!==undefined ? String(sampleRow[val]).slice(0,20) : '-'}</div>
+          <div class="sample">${({addr:'시도 시군구 읍면동 리 번지', bon:'숫자', bu:'숫자', code:'10자리 숫자', done:'완료 / 미완료'})[key] || ''}</div>
         </div>
         <select class="colselect" onchange="App.colMap.${key}=this.value===''?null:parseInt(this.value);App.renderMappingScreen();">
           <option value="">사용 안 함</option>
@@ -2150,7 +2149,7 @@ const App = {
     const form = document.getElementById('manualParcelForm');
     let html = `
       <div class="searchbar" style="position:relative;">
-        <input type="text" id="manualSearchInput" placeholder="🔍 예: 봉동읍 구성리 123-4 (지번·도로명)" onkeydown="if(event.key==='Enter'){App.searchManualCandidates();}">
+        <input type="text" id="manualSearchInput" placeholder="🔍 지번 또는 도로명 주소 (읍면동 리 번지)" onkeydown="if(event.key==='Enter'){App.searchManualCandidates();}">
         <button type="button" onclick="App.searchManualCandidates()" style="border:1px solid var(--border);border-radius:10px;padding:0 16px;background:#fff;font-size:13px;font-weight:600;">검색</button>
         <div id="manualSearchResults" class="search-results hidden"></div>
       </div>
