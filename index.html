@@ -4343,7 +4343,33 @@ const App = {
   // points: [{lat,lng,name}, ...] 방문 순서 그대로. 첫=출발지, 끝=목적지, 중간=경유지.
   // TMAP 자동차 경로안내 API(POST /tmap/routes) 호출. 경유지 유무와 무관하게
   // 쿼터는 하나의 버킷(TMAP_ROUTE_DAILY_LIMIT)으로 관리함.
+  // [구간별 호출] 경유지가 있으면 구간(출발→경유1, 경유1→경유2 … →도착)마다 TMAP을 따로 호출해 이어 붙임.
+  // 한 번에 passList로 보내면 TMAP이 경유지를 지난 뒤 "같은 진행 방향"으로 계속 가는 경로를 만들어서,
+  // 막다른 길/일방통행 경유지에서는 U턴 대신 먼 순환로를 돌게 됨. 구간별로 나눠 호출하면 각 구간이
+  // 경유지에서 방향 제약 없이 새로 시작하므로 왔던 길로 바로 되돌아가는 경로가 나올 수 있음.
+  // 대신 호출 횟수가 구간 수만큼 늘어남(경유지 1개 = 2회).
   async fetchTmapRoute(points){
+    if(points.length <= 2) return this._fetchTmapRouteOnce(points);
+    const parts = [];
+    for(let i=0; i<points.length-1; i++){
+      const r = await this._fetchTmapRouteOnce([points[i], points[i+1]]);
+      if(!r.ok) return r;   // 한 구간이라도 실패하면 그 오류를 그대로 반환
+      parts.push(r);
+    }
+    const fallbackDescs = [];
+    parts.forEach(r=> (r.fallbackDescs||[]).forEach(d=>{ if(!fallbackDescs.includes(d)) fallbackDescs.push(d); }));
+    return {
+      ok: true,
+      distanceKm: Math.round(parts.reduce((s,r)=>s+r.distanceKm, 0)*10)/10,
+      durationMin: parts.reduce((s,r)=>s+r.durationMin, 0),
+      path: parts.reduce((a,r)=>a.concat(r.path), []),
+      legs: parts.map(r=>r.legs[0] || {runs:[], distM:0}),
+      fallbackDescs,
+      cutMode: '구간별로 따로 계산'
+    };
+  },
+
+  async _fetchTmapRouteOnce(points){
     const key = loadTmapAppKey();
     if(!isTmapKeyConfigured(key)) return {error:'no-key'};
     const q = loadTmapRouteQuota();
