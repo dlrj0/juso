@@ -399,16 +399,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .village-legend .vl-chip.off{ opacity:0.45; }
   .village-legend .vl-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
 
-  .nav-select-bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px;}
-  #navSelectModeBtn.active{background:#ff5a3c;border-color:#ff5a3c;color:#fff;}
-  .nav-select-panel{margin-top:8px;padding:10px;border:1px solid var(--border);border-radius:10px;background:var(--surface);}
   /* 길찾기 구간 범례(패널 안) */
-  .nav-leg-list{display:flex;flex-direction:column;gap:5px;margin-top:8px;}
-  .nav-leg-list:empty{display:none;}
-  .nav-leg-item{display:flex;align-items:center;gap:8px;font-size:12.5px;}
-  .nav-leg-swatch{width:28px;height:6px;border-radius:3px;flex-shrink:0;box-shadow:0 0 0 1.5px #fff, 0 0 0 2.5px rgba(0,0,0,.12);}
-  .nav-leg-km{margin-left:auto;font-family:var(--mono);font-size:11.5px;color:var(--text-mute);}
-  .nav-leg-hint{font-size:11px;color:var(--text-mute);margin-top:2px;}
   /* 길찾기 구간 범례(지도 안 — 캡처 사진에도 같이 찍힘) */
   .nav-map-legend{position:absolute;top:8px;left:8px;z-index:50;max-width:72%;pointer-events:none;
     background:rgba(255,255,255,.94);border-radius:8px;padding:5px 9px;box-shadow:0 1px 4px rgba(0,0,0,.28);
@@ -416,14 +407,46 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
   .nav-map-legend .nml-row{display:flex;align-items:center;gap:6px;white-space:nowrap;}
   .nav-map-legend .nml-sw{width:18px;height:5px;border-radius:3px;flex-shrink:0;}
   .nav-map-legend .nml-more{color:#666;font-size:10.5px;}
-  .nav-select-chips{display:flex;flex-wrap:wrap;gap:6px;}
-  .nav-select-chips .ns-chip{
-    display:flex;align-items:center;gap:5px;background:#fff;border:1.5px solid #ff5a3c;
-    border-radius:100px;padding:3px 6px 3px 10px;font-size:12px;font-weight:700;color:#ff5a3c;
-  }
-  .nav-select-chips .ns-chip button{border:none;background:transparent;color:#ff5a3c;font-size:14px;
-    line-height:1;cursor:pointer;padding:2px 4px;}
-  .nav-select-chips .ns-empty{font-size:12.5px;color:var(--text-mute);}
+  /* ---- 길찾기(핀 선택) 컴팩트 UI ---- */
+  .nav-bar{display:flex;align-items:center;gap:8px;margin-top:8px;min-height:30px;}
+  .nav-pill{display:inline-flex;align-items:center;gap:5px;height:30px;padding:0 12px 0 9px;border-radius:100px;
+    border:1px solid var(--border);background:var(--surface);color:var(--text);font-size:12.5px;font-weight:700;
+    cursor:pointer;transition:background .15s,border-color .15s,color .15s;}
+  .nav-pill:hover{border-color:#ff5a3c;}
+  .nav-pill.active{background:#ff5a3c;border-color:#ff5a3c;color:#fff;box-shadow:0 1px 4px rgba(255,90,60,.35);}
+  .nav-bar-hint{font-size:11.5px;color:var(--text-mute);line-height:1.3;}
+  .nav-card{margin-top:6px;padding:8px 10px;border:1px solid var(--border);border-radius:12px;background:var(--surface);
+    display:flex;flex-direction:column;gap:7px;}
+  .nav-chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center;}
+  .nav-chip{display:inline-flex;align-items:center;gap:5px;height:26px;padding:0 4px 0 3px;border-radius:100px;
+    background:#fff;border:1px solid var(--border);font-size:12px;color:var(--text);max-width:100%;}
+  .nav-chip-no{width:19px;height:19px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;
+    font-style:normal;font-size:11px;font-weight:800;color:#fff;flex-shrink:0;}
+  .nav-chip-role{font-size:10.5px;color:var(--text-mute);font-weight:600;}
+  .nav-chip-name{font-weight:700;font-family:var(--mono);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:120px;}
+  .nav-chip button{border:none;background:transparent;color:var(--text-mute);font-size:15px;line-height:1;cursor:pointer;
+    width:20px;height:20px;border-radius:50%;padding:0;}
+  .nav-chip button:hover{background:var(--surface-2);color:#ff5a3c;}
+  .nav-chip-arrow{color:var(--text-mute);font-size:11px;}
+  .nav-empty{font-size:12px;color:var(--text-mute);}
+  .nav-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .nav-btn{height:28px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text);font-size:12.5px;font-weight:700;cursor:pointer;}
+  .nav-btn.primary{background:var(--accent,#2E86AB);border-color:var(--accent,#2E86AB);color:#fff;}
+  .nav-btn:disabled{opacity:.4;cursor:default;}
+  .nav-summary{margin-left:auto;font-size:12px;color:var(--text);font-weight:700;font-family:var(--mono);}
+  .nav-legs{display:flex;flex-wrap:wrap;gap:5px;}
+  .nav-legs:empty{display:none;}
+  .nav-leg{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 10px 0 8px;border-radius:8px;border:1px solid var(--border);
+    background:#fff;font-size:12px;color:var(--text);cursor:pointer;}
+  .nav-leg.on{background:var(--accent-soft);border-color:var(--accent,#2E86AB);font-weight:700;}
+  .nav-leg.dim{opacity:.45;}
+  .nav-leg-swatch{width:18px;height:5px;border-radius:3px;flex-shrink:0;}
+  .nav-leg-km{font-family:var(--mono);font-size:11px;color:var(--text-mute);}
+  .nav-details{font-size:11.5px;color:var(--text-mute);}
+  .nav-details summary{cursor:pointer;user-select:none;width:max-content;}
+  .nav-detail-text{margin-top:4px;line-height:1.55;white-space:pre-line;font-family:var(--mono);font-size:11px;}
+  .nav-detail-text p{margin:5px 0 0;font-family:inherit;white-space:normal;font-size:11px;}
   .topbar-right{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;}
   .modal{position:fixed;inset:0;background:rgba(20,24,19,0.5);z-index:50;display:flex;align-items:flex-end;justify-content:center;}
   .modal-card{background:#fff;border-radius:16px 16px 0 0;padding:20px 18px 28px;width:100%;max-width:640px;max-height:82vh;overflow-y:auto;}
@@ -675,18 +698,19 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       </div>
       <div class="gps-status hidden" id="routeLineStatus"></div>
 
-      <div class="nav-select-bar">
-        <button type="button" id="navSelectModeBtn" class="gps-btn" onclick="App.toggleNavSelectMode()">🧭 핀 선택 길찾기 모드</button>
-        <span class="hint" id="navSelectHint" style="margin:0;">모드를 켠 뒤 필지 핀을 순서대로 눌러 선택하세요 (예: 4→5→7 순으로 누르면 그 순서 그대로 경로를 찾아요).</span>
+      <div class="nav-bar">
+        <button type="button" id="navSelectModeBtn" class="nav-pill" onclick="App.toggleNavSelectMode()" title="켜고 필지 핀을 출발 → 경유 → 도착 순서로 누르세요"><span>🧭</span><span id="navSelectModeLabel">길찾기</span></button>
+        <span class="nav-bar-hint" id="navSelectHint">핀을 순서대로 눌러 경로 만들기</span>
       </div>
-      <div id="navSelectPanel" class="nav-select-panel hidden">
-        <div id="navSelectChips" class="nav-select-chips"></div>
-        <div class="row-btns" style="margin-top:6px;">
-          <button onclick="App.fetchNavRoute()">🛣️ 이 순서로 길찾기</button>
-          <button onclick="App.clearNavSelection()">선택 지우기</button>
+      <div id="navSelectPanel" class="nav-card hidden">
+        <div id="navSelectChips" class="nav-chips"></div>
+        <div class="nav-actions">
+          <button type="button" id="navGoBtn" class="nav-btn primary" onclick="App.fetchNavRoute()">경로 찾기</button>
+          <button type="button" class="nav-btn" onclick="App.clearNavSelection()">지우기</button>
+          <span id="navRouteStatus" class="nav-summary"></span>
         </div>
-        <div id="navRouteStatus" class="gps-status" style="margin-top:6px;"></div>
-        <div id="navRouteLegend" class="nav-leg-list"></div>
+        <div id="navRouteLegend" class="nav-legs"></div>
+        <details id="navDetails" class="nav-details hidden"><summary id="navDetailsSummary">자세히</summary><div id="navDetailText" class="nav-detail-text"></div></details>
       </div>
 
       <div class="row-btns hidden" id="mapLegendActions" style="margin:2px 0 6px;">
@@ -705,7 +729,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
       <div class="mrh mrh-sw" data-dir="sw"></div><div class="mrh mrh-se" data-dir="se"></div>
       <div id="kakaoMapContainer" style="width:100%;height:62vh;min-height:320px;border-radius:12px;border:1px solid var(--border);margin-top:8px;background:#f4f4f4;"></div>
     </div>
-    <p class="hint" id="mapFocusHint" style="margin-top:6px;">"핀 선택 길찾기 모드" 3개 이상 핀 선택시 경로가 이상해질 수 있어요.</p>
+    <p class="hint" id="mapFocusHint" style="margin-top:6px;">🧭 길찾기를 켜고 핀을 출발 → 경유 → 도착 순서로 눌러보세요. 경유지는 구간별로 따로 계산해요.</p>
   </div>
 
 </div>
@@ -3913,17 +3937,31 @@ const App = {
   },
 
   // ---------- 핀 선택 길찾기 모드 ----------
-  toggleNavSelectMode(){
-    this.navSelectMode = !this.navSelectMode;
-    const btn = document.getElementById('navSelectModeBtn');
-    if(btn){
-      btn.textContent = this.navSelectMode ? '✓ 핀 선택 중 (누르면 종료)' : '🧭 핀 선택 길찾기 모드 켜기';
-      btn.classList.toggle('active', this.navSelectMode);
+  toggleNavSelectMode(){ this.setNavSelectMode(!this.navSelectMode); },
+  setNavSelectMode(on){
+    // 계산이 끝난 결과가 떠 있는 상태에서 다시 켜면 "새 경로 만들기"로 보고 이전 선택/결과를 비움
+    if(on && this._lastNavRoute){
+      this._navSelectPoints = [];
+      this._lastNavRoute = null;
+      this._navFocus = null;
+      this.clearNavRoutePolylineOnly();
+      this.clearNavRouteVisuals();
     }
-    const hint = document.getElementById('navSelectHint');
-    if(hint) hint.style.display = this.navSelectMode ? 'none' : '';
+    this.navSelectMode = !!on;
+    this.syncNavModeUI();
     document.getElementById('navSelectPanel').classList.toggle('hidden', !this.navSelectMode && this._navSelectPoints.length===0);
     this.renderNavSelectPanel();
+  },
+  syncNavModeUI(){
+    const btn = document.getElementById('navSelectModeBtn');
+    const label = document.getElementById('navSelectModeLabel');
+    if(btn) btn.classList.toggle('active', this.navSelectMode);
+    if(label) label.textContent = this.navSelectMode ? '선택 중 · 탭하면 종료' : '길찾기';
+    const hint = document.getElementById('navSelectHint');
+    if(hint){
+      hint.textContent = this.navSelectMode ? '핀을 출발 → 경유 → 도착 순서로 누르세요' : '핀을 순서대로 눌러 경로 만들기';
+      hint.style.display = (!this.navSelectMode && this._navSelectPoints.length) ? 'none' : '';
+    }
   },
   addNavSelectPoint(lat, lng, name){
     if(this._navSelectPoints.length >= KAKAO_ROUTE_MAX_POINTS){
@@ -3951,43 +3989,56 @@ const App = {
     const statusEl = document.getElementById('navRouteStatus');
     if(!chipsEl) return;
     const pts = this._navSelectPoints;
+    const esc = (t)=> String(t==null?'':t).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+    const shortName = (n)=> String(n||'').replace(/^필지\s*\((?:지번\s*)?(.*)\)$/, '$1');
+    const last = pts.length-1;
     if(pts.length===0){
-      chipsEl.innerHTML = '<span class="ns-empty">아직 선택한 핀이 없어요. 지도에서 필지/마을 핀을 순서대로 눌러주세요.</span>';
+      chipsEl.innerHTML = '<span class="nav-empty">지도에서 핀을 눌러 출발지부터 선택하세요.</span>';
     } else {
-      const roleOf = (i)=> i===0 ? '출발지' : (i===pts.length-1 ? '목적지' : `경유지${i}`);
+      const bg = (i)=> i===0 ? '#1E8E3E' : (i===last ? '#2B2D42' : NAV_LEG_COLORS[(i-1) % NAV_LEG_COLORS.length]);
+      const role = (i)=> i===0 ? '출발' : (i===last ? '도착' : `경유${i}`);
       chipsEl.innerHTML = pts.map((p,i)=>`
-        <span class="ns-chip">${i+1}. ${roleOf(i)} · ${p.name}<button type="button" onclick="App.removeNavSelectPoint(${i})">×</button></span>
+        ${i ? '<span class="nav-chip-arrow">›</span>' : ''}<span class="nav-chip"><i class="nav-chip-no" style="background:${bg(i)}">${i+1}</i><span class="nav-chip-role">${role(i)}</span><span class="nav-chip-name" title="${esc(p.name)}">${esc(shortName(p.name))}</span><button type="button" title="이 핀 빼기" onclick="App.removeNavSelectPoint(${i})">×</button></span>
       `).join('');
     }
+    const goBtn = document.getElementById('navGoBtn');
+    if(goBtn) goBtn.disabled = pts.length < 2;
+    const R = this._lastNavRoute;
     if(statusEl){
-      if(this._lastNavRoute){
-        const r = this._lastNavRoute;
-        let txt = `🚗 실제 도로 기준 약 ${r.distanceKm}km · ${r.durationMin}분` +
-          (r.hasWaypoints ? ' (경유지 포함)' : ' (직행)');
-        if(r.fallbackDescs && r.fallbackDescs.length){
-          txt += `\n⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${r.fallbackDescs.join(', ')}`;
-        }
-        if(r.cutMode) txt += `\n구간 나누기: ${r.cutMode}`;
-        if(r.diag) txt += `\n진단: ${r.diag}`;
-        statusEl.textContent = txt;
+      if(R){
+        statusEl.textContent = `🚗 ${R.distanceKm}km · ${R.durationMin}분`;
       } else if(pts.length===1){
-        statusEl.textContent = '핀을 1개 더 선택하면 경로를 계산할 수 있어요.';
+        statusEl.textContent = '핀을 1개 더 선택하세요';
       } else {
         statusEl.textContent = '';
       }
     }
-    // 구간별 색 범례 — 출발→경유→도착 순서대로 어떤 색 선이 어느 구간인지
+    // 자세히(접힘): 경고/진단/사용법
+    const detEl = document.getElementById('navDetails');
+    if(detEl){
+      if(R){
+        const warn = (R.fallbackDescs && R.fallbackDescs.length);
+        let t = '';
+        if(warn) t += `⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${R.fallbackDescs.join(', ')}\n`;
+        if(R.cutMode) t += `구간 나누기: ${R.cutMode}\n`;
+        if(R.diag) t += `진단: ${R.diag}`;
+        document.getElementById('navDetailText').innerHTML = `<div>${esc(t)}</div><p>같은 길을 다시 지나는 곳은 오른쪽 차선으로 벌어져 나란히 그려지고, 나중에 지나는 쪽이 더 어두워요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</p>`;
+        document.getElementById('navDetailsSummary').textContent = warn ? '⚠️ 자세히' : '자세히';
+        detEl.classList.remove('hidden');
+      } else {
+        detEl.classList.add('hidden');
+      }
+    }
+    // 구간별 색 범례 — 탭하면 그 구간만 강조
     const legEl = document.getElementById('navRouteLegend');
     if(legEl){
-      const R = this._lastNavRoute;
       if(R && R.legMeta && R.legMeta.length){
         const f = this._navFocus;
         legEl.innerHTML = R.legMeta.map((m,k)=>`
-          <div class="nav-leg-item" onclick="App.setNavFocus(${k})" style="cursor:pointer;padding:6px 4px;border-radius:8px;${f===k?'background:var(--accent-soft);font-weight:700;':''}${f!==null&&f!==k?'opacity:.5;':''}">
+          <button type="button" class="nav-leg${f===k?' on':''}${f!==null&&f!==k?' dim':''}" onclick="App.setNavFocus(${k})">
             <span class="nav-leg-swatch" style="background:${NAV_LEG_COLORS[k % NAV_LEG_COLORS.length]};"></span>
-            <span><b>${k+1}.</b> ${m.label}</span><span class="nav-leg-km">${m.km}km</span>
-          </div>`).join('') +
-          `<div class="nav-leg-hint">같은 길을 다시 지나는 곳에서만 오른쪽 차선으로 벌어져 나란히 그려지고, 나중에 지나는 쪽은 더 어두운 색이에요(밝은 선=먼저, 어두운 선=나중). 겹친 곳은 화살표가 크고 촘촘해요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</div>`;
+            <span>${esc(m.label)}</span><span class="nav-leg-km">${m.km}km</span>
+          </button>`).join('');
       } else {
         legEl.innerHTML = '';
       }
@@ -4016,7 +4067,8 @@ const App = {
       return;
     }
     const statusEl = document.getElementById('navRouteStatus');
-    if(statusEl) statusEl.textContent = '🚗 실제 도로 경로 계산 중...';
+    if(statusEl) statusEl.textContent = '🚗 계산 중...';
+    const goBtn0 = document.getElementById('navGoBtn'); if(goBtn0) goBtn0.disabled = true;
     const r = await this.fetchTmapRoute(pts);
     if(!r.ok){
       const msgMap = {
@@ -4051,6 +4103,9 @@ const App = {
       points: pts.map(p=>({lat:p.lat, lng:p.lng, name:p.name}))
     };
     this._navFocus = null;
+    // 계산이 끝나면 핀 선택 모드는 자동 종료(이후 핀을 눌러도 선택에 안 섞이고 일반 팝업이 열림)
+    this.navSelectMode = false;
+    this.syncNavModeUI();
     this.clearNavRoutePolylineOnly();
     const showBox = document.getElementById('mapShowNavRoute');
     if(showBox){ showBox.disabled = false; }
