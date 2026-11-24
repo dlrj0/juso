@@ -1048,9 +1048,10 @@ function roundNavCorners(runs, r, ref){
 // 차선 번호를 매김. (저장된 겹침 표시에 의존하지 않고 눈에 보이는 선 모양 그대로 판단 → 선이 실제로 포개지면 반드시 벌어짐)
 // runs: roundNavCorners 결과([[lat,lng,w],...] 배열의 배열). 반환: 같은 모양이되 점을 촘촘히 보강하고
 // w를 채운 배열(0=겹침 없음, 1=겹침, 2/3=같은 방향으로 2·3번째 겹침 → 옆 차선).
+let _navLaneStats = '';
 function assignNavLanes(runs, ref, mpp){
   const kx = 111320 * Math.cos(ref.lat * Math.PI/180), ky = 110574;
-  const STEP = Math.max(4, 2*mpp), RAD = Math.min(25, Math.max(6, 5*mpp)), MIN_BACK = 60, MIN_RETRACE = 40;
+  const STEP = Math.max(4, 2*mpp), RAD = Math.min(25, Math.max(10, 5*mpp)), MIN_BACK = 60, MIN_RETRACE = 40;
   // 1) 점 보강 + 전체 경로 기준 누적거리
   const D = []; let cumAll = 0, prev = null;
   runs.forEach((pts, ri)=>{
@@ -1105,6 +1106,26 @@ function assignNavLanes(runs, ref, mpp){
       if(on && s0 < 0) s0 = i;
     }
   });
+  // 진단: 겹침 판정 결과와, 판정은 안 됐지만 근처(RAD~40m)에 평행한 선이 있는 점의 수/거리(화면 '자세히'에 표시)
+  try{
+    const all = []; D.forEach(arr=> arr.forEach(q=> all.push(q)));
+    let nOv = 0, nR1 = 0, nR2 = 0; all.forEach(q=>{ if(q.ov) nOv++; if(q.rk===1) nR1++; if(q.rk>=2) nR2++; });
+    let near = 0; const dists = [];
+    if(all.length <= 4000){
+      all.forEach(q=>{
+        if(q.ov) return;
+        let best = Infinity;
+        for(const o of all){
+          if(q.c - o.c < MIN_BACK) continue;
+          const dd = Math.hypot(q.x-o.x, q.y-o.y); if(dd >= best || dd > 40) continue;
+          const a = angDiff(q.h, o.h); if(a < 30 || a > 150) best = dd;
+        }
+        if(best < Infinity){ near++; dists.push(best); }
+      });
+    }
+    dists.sort((a,b)=>a-b);
+    _navLaneStats = `점 ${all.length}개 · 겹침 ${nOv}(같은방향 2번째 ${nR1}, 3번째 ${nR2}) · 판정반경 ${RAD.toFixed(0)}m · 미판정인데 40m내 평행선 ${near}개` + (dists.length ? `(가장 가까운 거리 중앙값 ${dists[Math.floor(dists.length/2)].toFixed(1)}m)` : '') + ` · m/px ${mpp.toFixed(2)}`;
+  }catch(e){ _navLaneStats = '진단 실패: '+e; }
   return D.map(arr=> arr.map(q=>{
     const w = q.ov ? 1 + q.rk : 0;
     return [ref.lat + q.y/ky, ref.lng + q.x/kx, Math.max(w, q.w0)];
@@ -4244,7 +4265,8 @@ const App = {
         let t = '';
         if(warn) t += `⚠️ 도로 정보가 없어 일부 구간(점선)은 직선거리로 표시했어요: ${R.fallbackDescs.join(', ')}\n`;
         if(R.cutMode) t += `구간 나누기: ${R.cutMode}\n`;
-        if(R.diag) t += `진단: ${R.diag}`;
+        if(R.diag) t += `진단: ${R.diag}\n`;
+        if(_navLaneStats) t += `차선: ${_navLaneStats}`;
         document.getElementById('navDetailText').innerHTML = `<div>${esc(t)}</div><p>같은 길을 다시 지나는 곳은 오른쪽 차선으로 벌어져 나란히 그려지고, 나중에 지나는 쪽이 더 어두워요. 구간을 탭하면 그 구간만 진하게, 다시 탭하면 전체 보기예요.</p>`;
         document.getElementById('navDetailsSummary').textContent = warn ? '⚠️ 자세히' : '자세히';
         detEl.classList.remove('hidden');
@@ -4455,6 +4477,7 @@ const App = {
       const rad = NAV_CORNER_RADIUS_PX > 0 ? Math.min(40, Math.max(NAV_CORNER_RADIUS_PX*mpp, 5)) : 0;
       const rounded = rad ? roundNavCorners(seq.map(run=>run.pts), rad, R.ref) : seq.map(run=>run.pts);
       const laned = assignNavLanes(rounded, R.ref, mpp);   // 눈에 보이는 선이 실제로 포개진 곳을 직접 찾아 차선 번호를 매김
+      if(this._lastNavRoute) this.renderNavSelectPanel();   // '자세히'의 차선 진단 갱신
       seq.forEach((run, i)=>{
         run.offset = offsetPolylineRight(laned[i], d, R.ref);
         const lls = run.offset.map(q=> new kakao.maps.LatLng(q[0], q[1]));
