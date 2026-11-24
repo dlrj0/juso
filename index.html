@@ -430,7 +430,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
      접어서 지도를 넓게 볼 수 있음. 접어도 머리줄에 선택 개수/거리·시간은 남아 있음. */
   .nav-sheet{position:fixed;left:0;right:0;bottom:var(--sticky-h,66px);z-index:19;background:var(--surface);
     border-top:1px solid var(--border);border-radius:14px 14px 0 0;box-shadow:0 -4px 14px rgba(0,0,0,.14);}
-  .nav-sheet-in{max-width:640px;margin:0 auto;}
+  .nav-sheet-in{width:100%;}
   .nav-sheet-head{display:flex;align-items:center;gap:8px;padding:4px 12px;min-height:38px;cursor:pointer;user-select:none;-webkit-user-select:none;}
   .nav-sheet-title{font-size:13px;font-weight:800;white-space:nowrap;}
   .nav-sheet-head .nav-summary{flex:1;min-width:0;margin-left:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -682,7 +682,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
         <label class="tgl"><input type="checkbox" id="mapShowParcels" checked onchange="App.renderMapMarkers(false)"><span>📍 필지</span></label>
         <label class="tgl"><input type="checkbox" id="mapShowJibun" checked onchange="App.renderMapMarkers(false)"><span>🔖 지번</span></label>
         <label class="tgl"><input type="checkbox" id="mapShowRouteLine" checked onchange="App.renderMapMarkers(false)"><span>➰ 순서선</span></label>
-        <label class="tgl"><input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers(false)"><span>🛣️ 도로경로</span></label>
+        <label class="tgl"><input type="checkbox" id="mapShowNavRoute" checked disabled onchange="App.renderMapMarkers(false)"><span>도로경로</span></label>
         <select id="mapStatusFilter" class="map-status-select" onchange="App.renderMapMarkers(false)" title="완료여부">
           <option value="all">전체</option>
           <option value="undone">미완료</option>
@@ -851,7 +851,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div id="navSelectPanel" class="nav-sheet hidden">
   <div class="nav-sheet-in">
     <div class="nav-sheet-head" onclick="App.toggleNavSheetCollapse()" title="탭하면 목록을 접고 펼쳐요">
-      <span class="nav-sheet-title">🛣️ 길찾기 <span id="navSheetCount"></span></span>
+      <span class="nav-sheet-title">길찾기 <span id="navSheetCount"></span></span>
       <span id="navRouteStatus" class="nav-summary"></span>
       <button type="button" class="nav-btn" onclick="event.stopPropagation();App.clearNavSelection()">지우기</button>
       <span class="nav-sheet-caret" id="navSheetCaret">▾</span>
@@ -867,7 +867,7 @@ const KAKAO_APP_KEYS = ['YOUR_KAKAO_JS_APP_KEY_1', 'YOUR_KAKAO_JS_APP_KEY_2'];
 <div class="sticky-bottom" id="stickyBottom" style="display:none;">
   <div class="count-pill" id="bottomProgress">0/0 완료</div>
   <button type="button" class="sticky-toggle-btn" id="stickyToggleBtn" onclick="App.toggleStickyAddMode()" title="필지 추가 검색으로 전환">➕</button>
-  <button type="button" class="sticky-toggle-btn hidden" id="stickyNavBtn" onclick="App.toggleNavSelectMode()" title="길찾기 모드"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><circle cx="5" cy="19" r="2.3" stroke="currentColor" stroke-width="1.8"/><circle cx="19" cy="5" r="2.3" fill="currentColor"/><path d="M7.3 19H12C16.2 19 16.2 12 12 12C7.8 12 7.8 5 12 5H16.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+  <button type="button" class="sticky-toggle-btn hidden" id="stickyNavBtn" onclick="App.toggleNavSelectMode()" title="길찾기 모드"><svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" width="20" height="20"><path d="M6 22C6 22 2.5 18 2.5 14.5A3.5 3.5 0 0 1 9.5 14.5C9.5 18 6 22 6 22Z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/><circle cx="6" cy="14.5" r="1.2" fill="currentColor"/><circle cx="19" cy="5" r="2.3" fill="currentColor"/><path d="M9.5 14.5H12.5C16.5 14.5 16.5 9.75 12.5 9.75C8.5 9.75 8.5 5 12.5 5H16.7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
   <button class="primary-btn" id="stickyExportBtn" onclick="App.openExportModal()">엑셀로 내보내기</button>
   <div class="searchbar sticky-add-search hidden" id="stickyAddSearch">
     <input type="text" id="addParcelInput" placeholder="🔍 주소 검색으로 필지 추가"
@@ -4065,7 +4065,7 @@ const App = {
     const navOn = !!this.navSelectMode && this._currentScreen==='map';
     b.classList.toggle('nav-mode', navOn);
     if(navOn){
-      b.textContent = this._navBusy ? '🚗 계산 중...' : '🚗 경로 찾기';
+      b.textContent = this._navBusy ? '계산 중...' : '경로 찾기';
       b.disabled = !!this._navBusy || this._navSelectPoints.length < 2;
       b.onclick = ()=> this.fetchNavRoute();
     } else {
@@ -4156,7 +4156,7 @@ const App = {
     const R = this._lastNavRoute;
     if(statusEl){
       if(R){
-        statusEl.textContent = `🚗 ${R.distanceKm}km · ${R.durationMin}분`;
+        statusEl.textContent = `${R.distanceKm}km · ${R.durationMin}분`;
       } else if(pts.length===1){
         statusEl.textContent = '도착지를 눌러주세요';
       } else {
@@ -4224,7 +4224,7 @@ const App = {
       return;
     }
     const statusEl = document.getElementById('navRouteStatus');
-    if(statusEl) statusEl.textContent = '🚗 계산 중...';
+    if(statusEl) statusEl.textContent = '계산 중...';
     const r = await this.fetchTmapRoute(pts);
     if(!r.ok){
       const msgMap = {
