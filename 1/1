@@ -2,3 +2,8 @@
 3cee8237a39ce9a6fd5e6679220f48ba
 레스트
 b86ae5671277276728a3b40a1daf6b25
+
+
+
+$KakaoRestKey = 'b86ae5671277276728a3b40a1daf6b25'        # REST API 키 (주소 조회용)
+$KakaoJsKey   = '3cee8237a39ce9a6fd5e6679220f48ba'        # JavaScript 키 (지도용)
